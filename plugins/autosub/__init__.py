@@ -34,11 +34,11 @@ class AutoSub(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.6"
+    plugin_version = "0.2"
     # 插件作者
-    plugin_author = "olly"
+    plugin_author = "TimoYoung"
     # 作者主页
-    author_url = "https://github.com/lightolly"
+    author_url = "https://github.com/TimoYoung"
     # 插件配置项ID前缀
     plugin_config_prefix = "autosub"
     # 加载顺序
