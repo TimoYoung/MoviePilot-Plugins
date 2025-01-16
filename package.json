@@ -4,7 +4,7 @@
         "description": "使用whisper自动生成视频文件字幕。",
         "version": "0.7",
         "icon": "autosubtitles.jpeg",
-        "author": "lightolly",
+        "author": "TimoYoung",
         "level": 1,
         "v2": true
       }
