@@ -126,4 +126,4 @@ class OpenAi:
             return True, result
         except Exception as e:
             print(f"{str(e)}：{result}")
-            return False, str(e)
+            return False, f"{str(e)}：{result}"

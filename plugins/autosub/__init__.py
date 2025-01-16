@@ -676,7 +676,7 @@ class AutoSub(_PluginBase):
                 logger.info(f"OpenAI Api Rate limit reached, sleep 60s ...")
                 time.sleep(60)
             else:
-                logger.warn(f"翻译失败，重试第{i + 1}次")
+                logger.warn(f"翻译失败，重试第{i + 1}次, {result}")
                 time.sleep(2 * (i + 1))
             ret, result = openai.translate_to_zh(text)
 
