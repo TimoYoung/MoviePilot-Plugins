@@ -118,9 +118,9 @@ class OpenAi:
         try:
             completion = self.__get_model(prompt=system_prompt,
                                           message=user_prompt,
-                                          temperature=0,
+                                          temperature=0.7,
                                           top_p=1,
-                                          frequency_penalty=0,
+                                          frequency_penalty=1.0,
                                           presence_penalty=0)
             result = completion.choices[0].message.content.strip()
             return True, result
