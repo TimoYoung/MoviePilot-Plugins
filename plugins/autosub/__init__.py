@@ -172,24 +172,28 @@ class AutoSub(_PluginBase):
             self._running = True
             self.success_count = self.skip_count = self.fail_count = self.process_count = 0
             for path in path_list:
-                logger.info(f"开始处理目录：{path} ...")
+                logger.info(f"开始处理目录/文件：{path} ...")
                 # 如果目录不存在， 则不处理
                 if not os.path.exists(path):
-                    logger.warn(f"目录不存在，不进行处理")
-                    continue
-
-                # 如果目录不是文件夹， 则不处理
-                if not os.path.isdir(path):
-                    logger.warn(f"目录不是文件夹，不进行处理")
+                    logger.warn(f"目录/文件不存在，不进行处理")
                     continue
 
                 # 如果目录不是绝对路径， 则不处理
                 if not os.path.isabs(path):
-                    logger.warn(f"目录不是绝对路径，不进行处理")
+                    logger.warn(f"目录/文件不是绝对路径，不进行处理")
                     continue
 
-                # 处理目录
-                self.__process_folder_subtitle(path)
+                if os.path.isdir(path):
+                    # 处理目录
+                    self.__process_folder_subtitle(path)
+                elif os.path.splitext(path)[-1].lower() in settings.RMT_MEDIAEXT:
+                    # 处理单个视频文件
+                    self.__process_file_subtitle(path)
+                # 如果目录不是文件夹， 则不处理
+                else:
+                    logger.warn(f"目录不是文件夹或视频文件，不进行处理")
+                    continue
+
         except Exception as e:
             logger.error(f"处理异常: {e}")
         finally:
@@ -230,6 +234,71 @@ class AutoSub(_PluginBase):
             return False
         return True
 
+    def __process_file_subtitle(self, video_file):
+        if not video_file:
+            return
+        # 如果文件大小小于指定大小， 则不处理
+        if os.path.getsize(video_file) < int(self.file_size):
+            return
+
+        self.process_count += 1
+        start_time = time.time()
+        file_path, file_ext = os.path.splitext(video_file)
+        file_name = os.path.basename(video_file)
+
+        try:
+            logger.info(f"开始处理文件：{video_file} ...")
+            # 判断目的字幕（和内嵌）是否已存在
+            if self.__target_subtitle_exists(video_file):
+                logger.warn(f"字幕文件已经存在，不进行处理")
+                self.skip_count += 1
+                return
+            # 生成字幕
+            if self.send_notify:
+                self.post_message(title="自动字幕生成",
+                                  text=f" 媒体: {file_name}\n 开始处理文件 ... ")
+            ret, lang = self.__generate_subtitle(video_file, file_path, self.translate_only)
+            if not ret:
+                message = f" 媒体: {file_name}\n "
+                if self.translate_only:
+                    message += "内嵌&外挂字幕不存在，不进行翻译"
+                    self.skip_count += 1
+                else:
+                    message += "生成字幕失败，跳过后续处理"
+                    self.fail_count += 1
+
+                if self.send_notify:
+                    self.post_message(title="自动字幕生成", text=message)
+                return
+
+            if self.translate_zh:
+                # 翻译字幕
+                logger.info(f"开始翻译字幕为中文 ...")
+                if self.send_notify:
+                    self.post_message(title="自动字幕生成",
+                                      text=f" 媒体: {file_name}\n 开始翻译字幕为中文 ... ")
+                self.__translate_zh_subtitle(lang, f"{file_path}.{lang}.srt", f"{file_path}.zh.srt")
+                logger.info(f"翻译字幕完成：{file_name}.zh.srt")
+
+            end_time = time.time()
+            message = f" 媒体: {file_name}\n 处理完成\n 字幕原始语言: {lang}\n "
+            if self.translate_zh:
+                message += f"字幕翻译语言: zh\n "
+            message += f"耗时：{round(end_time - start_time, 2)}秒"
+            logger.info(f"自动字幕生成 处理完成：{message}")
+            if self.send_notify:
+                self.post_message(title="自动字幕生成", text=message)
+            self.success_count += 1
+        except Exception as e:
+            logger.error(f"自动字幕生成 处理异常：{e}")
+            end_time = time.time()
+            message = f" 媒体: {file_name}\n 处理失败\n 耗时：{round(end_time - start_time, 2)}秒"
+            if self.send_notify:
+                self.post_message(title="自动字幕生成", text=message)
+            # 打印调用栈
+            traceback.print_exc()
+            self.fail_count += 1
+
     def __process_folder_subtitle(self, path):
         """
         处理目录字幕
@@ -238,69 +307,7 @@ class AutoSub(_PluginBase):
         """
         # 获取目录媒体文件列表
         for video_file in self.__get_library_files(path):
-            if not video_file:
-                continue
-            # 如果文件大小小于指定大小， 则不处理
-            if os.path.getsize(video_file) < int(self.file_size):
-                continue
-
-            self.process_count += 1
-            start_time = time.time()
-            file_path, file_ext = os.path.splitext(video_file)
-            file_name = os.path.basename(video_file)
-
-            try:
-                logger.info(f"开始处理文件：{video_file} ...")
-                # 判断目的字幕（和内嵌）是否已存在
-                if self.__target_subtitle_exists(video_file):
-                    logger.warn(f"字幕文件已经存在，不进行处理")
-                    self.skip_count += 1
-                    continue
-                # 生成字幕
-                if self.send_notify:
-                    self.post_message(title="自动字幕生成",
-                                      text=f" 媒体: {file_name}\n 开始处理文件 ... ")
-                ret, lang = self.__generate_subtitle(video_file, file_path, self.translate_only)
-                if not ret:
-                    message = f" 媒体: {file_name}\n "
-                    if self.translate_only:
-                        message += "内嵌&外挂字幕不存在，不进行翻译"
-                        self.skip_count += 1
-                    else:
-                        message += "生成字幕失败，跳过后续处理"
-                        self.fail_count += 1
-
-                    if self.send_notify:
-                        self.post_message(title="自动字幕生成", text=message)
-                    continue
-
-                if self.translate_zh:
-                    # 翻译字幕
-                    logger.info(f"开始翻译字幕为中文 ...")
-                    if self.send_notify:
-                        self.post_message(title="自动字幕生成",
-                                          text=f" 媒体: {file_name}\n 开始翻译字幕为中文 ... ")
-                    self.__translate_zh_subtitle(lang, f"{file_path}.{lang}.srt", f"{file_path}.zh.srt")
-                    logger.info(f"翻译字幕完成：{file_name}.zh.srt")
-
-                end_time = time.time()
-                message = f" 媒体: {file_name}\n 处理完成\n 字幕原始语言: {lang}\n "
-                if self.translate_zh:
-                    message += f"字幕翻译语言: zh\n "
-                message += f"耗时：{round(end_time - start_time, 2)}秒"
-                logger.info(f"自动字幕生成 处理完成：{message}")
-                if self.send_notify:
-                    self.post_message(title="自动字幕生成", text=message)
-                self.success_count += 1
-            except Exception as e:
-                logger.error(f"自动字幕生成 处理异常：{e}")
-                end_time = time.time()
-                message = f" 媒体: {file_name}\n 处理失败\n 耗时：{round(end_time - start_time, 2)}秒"
-                if self.send_notify:
-                    self.post_message(title="自动字幕生成", text=message)
-                # 打印调用栈
-                traceback.print_exc()
-                self.fail_count += 1
+            self.__process_file_subtitle(video_file)
 
     def __do_speech_recognition(self, audio_lang, audio_file):
         """
@@ -748,9 +755,10 @@ class AutoSub(_PluginBase):
     @staticmethod
     def __external_subtitle_exists(video_file, prefer_langs=None):
         """
-        外部字幕文件是否存在
-        :param video_file:
-        :return:
+        外部字幕文件是否存在,支持多种格式及扩展需求。
+        :param video_file: 视频文件路径
+        :param prefer_langs: 偏好语言列表，支持单个语言字符串或列表
+        :return: 元组 (是否存在, 检测到的语言)
         """
         video_dir, video_name = os.path.split(video_file)
         video_name, video_ext = os.path.splitext(video_name)
@@ -758,9 +766,56 @@ class AutoSub(_PluginBase):
         if type(prefer_langs) == str and prefer_langs:
             prefer_langs = [prefer_langs]
 
-        for subtitle_lang in prefer_langs:
-            dest_subtitle = os.path.join(video_dir, f"{video_name}.{subtitle_lang}.srt")
-            if os.path.exists(dest_subtitle):
+        metadata_flags = ["default", "forced", "foreign", "sdh", "cc", "hi"]
+        subtitle_extensions = [".srt", ".sub", ".ass", ".ssa", ".vtt"]
+
+        def parse_filename(filename):
+            """
+            解析字幕文件名，提取语言和元数据标记。
+            :param filename: 字幕文件名
+            :return: (语言, 元数据列表)
+            """
+            parts = filename.split(".")
+            if len(parts) < 2:
+                return None, []
+
+            cur_subtitle_lang = None
+            cur_metadata = []
+
+            # 倒序遍历文件名中的标记
+            for i in range(len(parts) - 1, -1, -1):
+                part = parts[i]
+                if part in metadata_flags:
+                    cur_metadata.append(part)
+                elif cur_subtitle_lang is None:
+                    cur_subtitle_lang = part  # 记录最后一个语言标记
+
+            return cur_subtitle_lang, cur_metadata
+
+        # 检查字幕文件
+        for file in os.listdir(video_dir):
+            if not file.startswith(video_name):
+                continue
+
+            # 检查扩展名是否在支持范围内
+            _, ext = os.path.splitext(file)
+            if ext.lower() not in subtitle_extensions:
+                continue
+
+            # 提取文件名中的语言和元数据信息
+            filename_without_ext = file[len(video_name) + 1: -len(ext)] if file.startswith(video_name + ".") else ""
+            subtitle_lang, metadata = parse_filename(filename_without_ext)
+
+            # 如果没有语言标记，跳过
+            if not subtitle_lang:
+                continue
+
+            # 如果指定了偏好语言
+            if prefer_langs:
+                if subtitle_lang in prefer_langs:
+                    return True, subtitle_lang
+            else:
+                # 未指定偏好语言，找到的第一个字幕即返回
                 return True, subtitle_lang
 
         return False, None
@@ -772,7 +827,7 @@ class AutoSub(_PluginBase):
         :return:
         """
         if self.translate_zh:
-            prefer_langs = ['zh', 'chi']
+            prefer_langs = ['zh', 'chi', 'zh-CN', 'chs', 'zhs', 'zh-Hans', 'zhong', 'simp', 'cn']
         else:
             prefer_langs = ['en', 'eng']
 
