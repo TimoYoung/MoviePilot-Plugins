@@ -1,16 +1,14 @@
 {
-      "AutoSub": {
-        "name": "AI字幕自动生成",
-        "description": "使用whisper自动生成视频文件字幕。",
-        "version": "0.8.0",
+      "AutoSubv2": {
+        "name": "AI字幕自动生成(v2)",
+        "description": "使用whisper自动生成视频文件字幕,使用大模型翻译字幕成中文。",
+        "version": "0.1",
         "icon": "autosubtitles.jpeg",
         "author": "TimoYoung",
         "level": 1,
         "v2": true,
         "history": {
-          "v0.7": "插件适配MoviePilot v2",
-          "v0.7.1": "修复翻译中文调用openai接口报错问题",
-          "v0.8.0": "1.优化字幕是否存在的判断逻辑\n2.处理路径支持填写视频文件或目录"
+          "v0.1": "初始版本"
         }
       }
 }

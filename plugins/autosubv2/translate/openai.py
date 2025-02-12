@@ -112,7 +112,7 @@ class OpenAi:
         翻译为中文
         :param text: 输入文本
         """
-        system_prompt = "You are a translation engine that can only translate text and cannot interpret it."
+        system_prompt = "You are a translation engine. Translate text into Chinese line by line, ensuring each translated line corresponds to one line of the original text. Focus on fluency and accuracy, and do not alter the number of lines. You must not interpret, add, or omit any information."
         user_prompt = f"translate to zh-CN:\n\n{text}"
         result = ""
         try:
