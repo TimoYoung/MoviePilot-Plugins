@@ -593,7 +593,7 @@ class AutoSubv2(_PluginBase):
                     or stream.get('codec_name') in image_based_subtitle_codecs
             ):
                 continue
-            if not subtitle_index:
+            if subtitle_index is None:
                 subtitle_index = index
                 subtitle_lang = stream.get('tags', {}).get('language')
             # 获取默认字幕
