@@ -414,14 +414,21 @@ class AutoSubv2(_PluginBase):
         # 获取视频文件字幕信息
         ret, subtitle_index, \
             subtitle_lang, subtitle_count = self.__get_video_prefer_subtitle(video_meta, expert_subtitle_langs)
-        if ret and (audio_lang == subtitle_lang or subtitle_count == 1):
+        extract_subtitle = False
+        if ret:
             if audio_lang == subtitle_lang:
                 # 如果音轨和字幕语言一致， 则直接提取字幕
+                extract_subtitle = True
                 logger.info(f"内嵌音轨和字幕语言一致，直接提取字幕 ...")
             elif subtitle_count == 1:
                 # 如果音轨和字幕语言不一致，但只有一个字幕， 则直接提取字幕
+                extract_subtitle = True
                 logger.info(f"内嵌音轨和字幕语言不一致，但只有一个字幕，直接提取字幕 ...")
+            elif audio_lang == 'auto' and subtitle_lang in expert_subtitle_langs:
+                extract_subtitle = True
+                logger.info(f"音轨语言未知，字幕语言为默认语言{subtitle_lang}，直接提取字幕 ...")
 
+        if extract_subtitle:
             audio_lang = iso639.to_iso639_1(subtitle_lang) \
                 if (subtitle_lang and iso639.find(subtitle_lang) and iso639.to_iso639_1(subtitle_lang)) else 'und'
             Ffmpeg().extract_subtitle_from_video(video_file, f"{subtitle_file}.{audio_lang}.srt", subtitle_index)
