@@ -2,14 +2,15 @@
       "AutoSubv2": {
         "name": "AI字幕自动生成(v2)",
         "description": "使用whisper自动生成视频文件字幕,使用大模型翻译字幕成中文。",
-        "version": "0.2",
+        "version": "0.3",
         "icon": "autosubtitles.jpeg",
         "author": "TimoYoung",
         "level": 1,
         "v2": true,
         "history": {
           "v0.1": "初始版本",
-          "v0.2": "fix获取默认语言的内嵌字幕错误 尝试修复fast-whisper无法联网下载模型的问题"
+          "v0.2": "fix获取默认语言的内嵌字幕错误 尝试修复fast-whisper无法联网下载模型的问题",
+          "v0.3": "fix音轨语言未知提取内嵌字幕。添加whisper asr调试信息"
         }
       }
 }
