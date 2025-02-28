@@ -339,7 +339,7 @@ class AutoSubv2(_PluginBase):
                 if not os.path.exists(cache_dir):
                     os.mkdir(cache_dir)
                 os.environ["HF_HUB_CACHE"] = cache_dir
-                model = WhisperModel(download_model(self.faster_whisper_model, cache_dir=cache_dir),
+                model = WhisperModel(download_model(self.faster_whisper_model, local_files_only=False, cache_dir=cache_dir),
                                      device="cpu", compute_type="int8", cpu_threads=psutil.cpu_count(logical=False))
                 segments, info = model.transcribe(audio_file,
                                                   language=lang if lang != 'auto' else None,
