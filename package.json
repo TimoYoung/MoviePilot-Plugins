@@ -2,7 +2,7 @@
       "AutoSubv2": {
         "name": "AI字幕自动生成(v2)",
         "description": "使用whisper自动生成视频文件字幕,使用大模型翻译字幕成中文。",
-        "version": "0.1",
+        "version": "0.2",
         "icon": "autosubtitles.jpeg",
         "author": "TimoYoung",
         "level": 1,
