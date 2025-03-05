@@ -34,7 +34,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.5"
+    plugin_version = "0.5.1"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -131,6 +131,10 @@ class AutoSubv2(_PluginBase):
         self.whisper_main = config.get('whisper_main')
         self.whisper_model = config.get('whisper_model')
         self.translate_only = config.get('translate_only', False)
+        self.enable_batch = config.get('enable_batch', True)
+        self.batch_size = config.get('batch_size', 20)
+        self.context_window = config.get('context_window', 5)
+        self.max_retries = config.get('max_retries', 3)
         self.additional_args = config.get('additional_args', '-t 4 -p 1')
         self.send_notify = config.get('send_notify', False)
         self.asr_engine = config.get('asr_engine', 'faster_whisper')
@@ -1034,6 +1038,78 @@ class AutoSubv2(_PluginBase):
                             {
                                 'component': 'VCol',
                                 'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'enable_batch',
+                                            'label': '启用批次翻译',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'batch_size',
+                                            'label': '批大小',
+                                            'placeholder': '每批处理的最大字幕数（建议20-100）'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'context_window',
+                                            'label': '上下文窗口大小',
+                                            'placeholder': '5'
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VTextField',
+                                        'props': {
+                                            'model': 'max_retries',
+                                            'label': 'llm请求重试次数',
+                                            'placeholder': '3'
+                                        }
+                                    }
+                                ]
+                            },
+                        ]
+                    },
+                    {
+                        'component': 'VRow',
+                        'content': [
+                            {
+                                'component': 'VCol',
+                                'props': {
                                     'cols': 12
                                 },
                                 'content': [
@@ -1102,6 +1178,10 @@ class AutoSubv2(_PluginBase):
             "faster_whisper_model": "base",
             "translate_zh": True,
             "translate_only": False,
+            "enable_batch": True,
+            "batch_size": 20,
+            "context_window": 5,
+            "max_retries": 3,
             "path_list": "",
             "file_size": "10",
         }
