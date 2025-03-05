@@ -34,7 +34,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.6"
+    plugin_version = "0.7"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -159,6 +159,18 @@ class AutoSubv2(_PluginBase):
             logger.warn(f"文件大小不是数字，不进行处理")
             return
 
+        if not self.batch_size.isdigit():
+            logger.warn(f"批大小不是数字，不进行处理")
+            return
+        self.batch_size = int(self.batch_size)
+        if not self.context_window.isdigit():
+            logger.warn(f"上下文窗口大小不是数字，不进行处理")
+            return
+        self.context_window = int(self.context_window)
+        if not self.max_retries.isdigit():
+            logger.warn(f"最大重试次数不是数字，不进行处理")
+            return
+        self.max_retries = int(self.max_retries)
         # asr 配置检查
         if not self.translate_only and not self.__check_asr():
             return
@@ -1062,8 +1074,8 @@ class AutoSubv2(_PluginBase):
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'batch_size',
-                                            'label': '批大小',
-                                            'placeholder': '每批处理的最大字幕数（建议20-100）'
+                                            'label': '每批处理的最大字幕数',
+                                            'placeholder': '20'
                                         }
                                     }
                                 ]
