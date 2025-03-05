@@ -107,21 +107,27 @@ class OpenAi:
         if OpenAISessionCache.get(session_id):
             OpenAISessionCache.delete(session_id)
 
-    def translate_to_zh(self, text: str):
+    def translate_to_zh(self, text: str, context: str = None):
         """
         翻译为中文
         :param text: 输入文本
+        :param context: 翻译上下文
         """
-        system_prompt = "You are a translation engine. Translate text into Chinese line by line, ensuring each translated line corresponds to one line of the original text. Focus on fluency and accuracy, and do not alter the number of lines. You must not interpret, add, or omit any information."
-        user_prompt = f"translate to zh-CN:\n\n{text}"
+        system_prompt = """您是一位专业字幕翻译专家，请严格遵循以下规则：
+1. 将英文精准翻译为简体中文，保持原文本意
+2. 使用自然的口语化表达，符合中文观影习惯
+3. 特别注意上下文语境：
+   - 人物称谓和指代要保持一致
+   - 专业术语和特定名词需准确
+   - 情感语气要与场景匹配
+4. 不要添加额外解释，直接返回翻译结果"""
+        user_prompt = f"翻译上下文：\n{context}\n\n需要翻译的内容：\n{text}" if context else f"请翻译：\n{text}"
         result = ""
         try:
             completion = self.__get_model(prompt=system_prompt,
                                           message=user_prompt,
-                                          temperature=0.7,
-                                          top_p=1,
-                                          frequency_penalty=1.0,
-                                          presence_penalty=0)
+                                          temperature=0.2,
+                                          top_p=0.9)
             result = completion.choices[0].message.content.strip()
             return True, result
         except Exception as e:

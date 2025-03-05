@@ -51,6 +51,8 @@ class AutoSubv2(_PluginBase):
     # 语句结束符
     _end_token = ['.', '!', '?', '。', '！', '？', '。"', '！"', '？"', '."', '!"', '?"']
     _noisy_token = [('(', ')'), ('[', ']'), ('{', '}'), ('【', '】'), ('♪', '♪'), ('♫', '♫'), ('♪♪', '♪♪')]
+    # 上下文窗口大小
+    _context_window = 9
 
     def __init__(self):
         super().__init__()
@@ -632,10 +634,20 @@ class AutoSubv2(_PluginBase):
         :param content:
         :return:
         """
-        for token in self._noisy_token:
-            if content.startswith(token[0]) and content.endswith(token[1]):
-                return True
-        return False
+        return any(content.startswith(t[0]) and content.endswith(t[1]) for t in self._noisy_token)
+
+    def __get_context(self, all_items, index):
+        """获取当前字幕的上下文环境"""
+        start = max(0, index - self._context_window)
+        end = min(len(all_items), index + self._context_window + 1)
+        context_items = all_items[start:end]
+
+        # 构建上下文提示
+        context = []
+        for i, item in enumerate(context_items):
+            prefix = "当前上下文" if i == self._context_window else "上文" if i < self._context_window else "下文"
+            context.append(f"{prefix} {i + 1}: {item.content}")
+        return "\n".join(context)
 
     def __merge_srt(self, subtitle_data):
         """
@@ -682,86 +694,50 @@ class AutoSubv2(_PluginBase):
 
         return merged_subtitle
 
-    def __do_translate_with_retry(self, text, retry=3):
-        # 调用OpenAI翻译
-        # 免费OpenAI Api Limit: 20 / minute
+    def __retry_translate(self, text, context, max_retries=3):
+        """带指数退避的重试机制"""
         openai = OpenAi(self._openai_key, self._openai_url, self._openai_proxy, self._openai_model)
-        ret, result = openai.translate_to_zh(text)
-        for i in range(retry):
-            if ret and result:
-                break
-            if "Rate limit reached" in result or "Rate limit exceeded" in result:
-                logger.info(f"OpenAI Api Rate limit reached, sleep 60s ...")
-                time.sleep(60)
-            else:
-                logger.warn(f"翻译失败，重试第{i + 1}次, {result}")
-                time.sleep(2 * (i + 1))
-            ret, result = openai.translate_to_zh(text)
+        for attempt in range(max_retries):
+            ret, result = openai.translate_to_zh(text, context)
+            if ret:
+                return result
+            sleep_time = 2 ** attempt
+            print(f"翻译失败，{sleep_time}秒后重试... 错误信息：{result}")
+            time.sleep(sleep_time)
+        return None
 
-        if not ret or not result:
-            return None
-
-        return result
-
-    def __translate_zh_subtitle(self, source_lang, source_subtitle, dest_subtitle):
-        """
-        调用OpenAI 翻译字幕
-        :param source_subtitle:
-        :param dest_subtitle:
-        :return:
-        """
-        # 读取字幕文件
+    def __translate_zh_subtitle(self, source_lang: str, source_subtitle: str, dest_subtitle: str):
         srt_data = self.__load_srt(source_subtitle)
-        # 合并字幕语句，目前带标点带英文效果较好，非英文或者无标点的需要NLP处理
-        if source_lang in ['en', 'eng']:
-            logger.info(f"开始合并字幕语句 ...")
-            merged_data = self.__merge_srt(srt_data)
-            logger.info(f"合并字幕语句完成，合并前字幕数量：{len(srt_data)}, 合并后字幕数量：{len(merged_data)}")
-            srt_data = merged_data
+        translated_data = []
 
-        batch = []
-        max_batch_tokens = 1000
-        for srt_item in srt_data:
-            # 跳过空行和无意义的字幕
-            if not srt_item.content:
-                continue
-            if self.__is_noisy_subtitle(srt_item.content):
+        for index, item in enumerate(srt_data):
+            # 保留原始时间轴
+            new_item = copy.deepcopy(item)
+
+            # 跳过噪音字幕和空内容
+            content = new_item.content.replace('\n', ' ').strip()
+            if parse := etree.HTML(content):
+                content = parse.xpath('string(.)') or ''
+            if not content or self.__is_noisy_subtitle(content):
+                translated_data.append(new_item)
                 continue
 
-            # 批量翻译，减少调用次数
-            batch.append(srt_item)
-            # 当前批次字符数
-            batch_tokens = sum([len(x.content) for x in batch])
-            # 如果当前批次字符数小于最大批次字符数，且不是最后一条字幕，则继续
-            if batch_tokens < max_batch_tokens and srt_item != srt_data[-1]:
-                continue
+            # 获取上下文环境
+            context = self.__get_context(srt_data, index)
 
-            batch_content = '\n'.join([x.content for x in batch])
-            result = self.__do_translate_with_retry(batch_content)
-            # 如果翻译失败，则跳过
-            if not result:
-                batch = []
-                continue
+            # 执行翻译
+            translated = self.__retry_translate(content, context)
 
-            translated = result.split('\n')
-            if len(translated) != len(batch):
-                logger.info(
-                    f"翻译结果数量不匹配，翻译结果数量：{len(translated)}, 需要翻译数量：{len(batch)}, 退化为单条翻译 ...")
-                # 如果翻译结果数量不匹配，则退化为单条翻译
-                for index, item in enumerate(batch):
-                    result = self.__do_translate_with_retry(item.content)
-                    if not result:
-                        continue
-                    item.content = result + '\n' + item.content
+            if translated:
+                # 保留原文对照
+                new_item.content = f"{translated}\n{content}"
             else:
-                logger.debug(f"翻译结果数量匹配，翻译结果数量：{len(translated)}")
-                for index, item in enumerate(batch):
-                    item.content = translated[index].strip() + '\n' + item.content
+                new_item.content = f"[翻译失败]\n{content}"
+            # print(new_item.content)
+            translated_data.append(new_item)
+            logger.info(f"已处理 {index + 1}/{len(srt_data)} 条")
 
-            batch = []
-
-        # 保存字幕文件
-        self.__save_srt(dest_subtitle, srt_data)
+        self.__save_srt(dest_subtitle, translated_data)
 
     @staticmethod
     def __external_subtitle_exists(video_file, prefer_langs=None):
