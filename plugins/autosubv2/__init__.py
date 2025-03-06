@@ -8,7 +8,7 @@ import traceback
 from datetime import timedelta, datetime
 from pathlib import Path
 from typing import Tuple, Dict, Any, List
-
+from threading import Event
 import iso639
 import psutil
 import pytz
@@ -25,7 +25,6 @@ from plugins.autosubv2.translate.openai import OpenAi
 
 
 # todo
-# 全局开关关闭后停止运行
 # whisper asr失败问题解决
 # 翻译参数在启用翻译菜单下折叠
 # 监控目录自动翻译
@@ -40,7 +39,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.8"
+    plugin_version = "0.9"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -52,6 +51,8 @@ class AutoSubv2(_PluginBase):
     # 可使用的用户级别
     auth_level = 2
 
+    # 退出事件
+    _event = Event()
     # 私有属性
     _running = False
     # 语句结束符
@@ -118,7 +119,7 @@ class AutoSubv2(_PluginBase):
             if not chatgpt:
                 logger.error(f"翻译依赖于ChatGPT，请先维护ChatGPT插件")
                 return
-            self._chatgpt = chatgpt and chatgpt.get("enabled")
+            self._chatgpt = chatgpt and chatgpt.get("enable_gpt")
             self._openai_key = chatgpt and chatgpt.get("openai_key")
             self._openai_url = chatgpt and chatgpt.get("openai_url")
             self._openai_proxy = chatgpt and chatgpt.get("proxy")
@@ -147,7 +148,7 @@ class AutoSubv2(_PluginBase):
         self.faster_whisper_model = config.get('faster_whisper_model', 'base')
         self.faster_whisper_model_path = config.get('faster_whisper_model_path',
                                                     self.get_data_path() / "faster-whisper-models")
-
+        self.stop_service()
         run_now = config.get('run_now')
         if not run_now:
             return
@@ -203,6 +204,9 @@ class AutoSubv2(_PluginBase):
             self._running = True
             self.success_count = self.skip_count = self.fail_count = self.process_count = 0
             for path in path_list:
+                if self._event.is_set():
+                    logger.info(f"字幕生成服务停止")
+                    return
                 logger.info(f"开始处理目录/文件：{path} ...")
                 # 如果目录不存在， 则不处理
                 if not os.path.exists(path):
@@ -338,6 +342,9 @@ class AutoSubv2(_PluginBase):
         """
         # 获取目录媒体文件列表
         for video_file in self.__get_library_files(path):
+            if self._event.is_set():
+                logger.info(f"字幕生成服务停止")
+                return
             self.__process_file_subtitle(video_file)
 
     def __do_speech_recognition(self, audio_lang, audio_file):
@@ -782,6 +789,9 @@ class AutoSubv2(_PluginBase):
         current_batch = []
 
         for item in valid_subs:
+            if self._event.is_set():
+                logger.info(f"字幕生成服务停止")
+                return
             current_batch.append(item)
 
             if len(current_batch) >= self.batch_size:
@@ -914,8 +924,8 @@ class AutoSubv2(_PluginBase):
                                     {
                                         'component': 'VSwitch',
                                         'props': {
-                                            'model': 'enabled',
-                                            'label': '启用插件',
+                                            'model': 'enable_gpt',
+                                            'label': '启用OpenAi翻译',
                                         }
                                     }
                                 ]
@@ -1181,7 +1191,7 @@ class AutoSubv2(_PluginBase):
                 ]
             }
         ], {
-            "enabled": False,
+            "enable_gpt": True,
             "send_notify": False,
             "run_now": False,
             "asr_engine": "faster-whisper",
@@ -1217,6 +1227,8 @@ class AutoSubv2(_PluginBase):
         退出插件
         """
         if self._running:
+            self._event.set()
             self._running = False
             self._scheduler.shutdown()
+            self._event.clear()
             logger.info(f"停止自动字幕生成服务")
