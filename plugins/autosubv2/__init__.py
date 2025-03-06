@@ -24,6 +24,12 @@ from plugins.autosubv2.ffmpeg import Ffmpeg
 from plugins.autosubv2.translate.openai import OpenAi
 
 
+# todo
+# 全局开关关闭后停止运行
+# whisper asr失败问题解决
+# 翻译参数在启用翻译菜单下折叠
+# 监控目录自动翻译
+
 class AutoSubv2(_PluginBase):
     # 插件名称
     plugin_name = "AI字幕自动生成(v2)"
@@ -34,7 +40,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.7"
+    plugin_version = "0.8"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -302,7 +308,7 @@ class AutoSubv2(_PluginBase):
                 if self.send_notify:
                     self.post_message(title="自动字幕生成",
                                       text=f" 媒体: {file_name}\n 开始翻译字幕为中文 ... ")
-                self.__translate_zh_subtitle(lang, f"{file_path}.{lang}.srt", f"{file_path}.zh.srt")
+                self.__translate_zh_subtitle(lang, f"{file_path}.{lang}.srt", f"{file_path}.zh.机翻.srt")
                 logger.info(f"翻译字幕完成：{file_name}.zh.srt")
 
             end_time = time.time()
@@ -540,6 +546,51 @@ class AutoSubv2(_PluginBase):
         with open(file_path, 'w', encoding="utf8") as f:
             f.write(srt.compose(srt_data))
 
+    def __merge_srt(self, subtitle_data):
+        """
+        合并整句字幕
+        :param subtitle_data:
+        :return:
+        """
+        subtitle_data = copy.deepcopy(subtitle_data)
+        # 合并字幕
+        merged_subtitle = []
+        sentence_end = True
+
+        for index, item in enumerate(subtitle_data):
+            # 当前字幕先将多行合并为一行，再去除首尾空格
+            content = item.content.replace('\n', ' ').strip()
+            # 去除html标签
+            parse = etree.HTML(content)
+            if parse is not None:
+                content = parse.xpath('string(.)')
+            if content == '':
+                continue
+            item.content = content
+
+            # 背景音等字幕，跳过
+            if self.__is_noisy_subtitle(content):
+                merged_subtitle.append(item)
+                sentence_end = True
+                continue
+
+            if not merged_subtitle or sentence_end:
+                merged_subtitle.append(item)
+            elif not sentence_end:
+                merged_subtitle[-1].content = f"{merged_subtitle[-1].content} {content}"
+                merged_subtitle[-1].end = item.end
+
+            # 如果当前字幕内容以标志符结尾，则设置语句已经终结
+            if content.endswith(tuple(self._end_token)):
+                sentence_end = True
+            # 如果上句字幕超过一定长度，则设置语句已经终结
+            elif len(merged_subtitle[-1].content) > 350:
+                sentence_end = True
+            else:
+                sentence_end = False
+
+        return merged_subtitle
+
     def __get_video_prefer_audio(self, video_meta, prefer_lang=None):
         """
         获取视频的首选音轨，如果有多音轨， 优先指定语言音轨，否则获取默认音轨
@@ -659,25 +710,33 @@ class AutoSubv2(_PluginBase):
         """
         return any(content.startswith(t[0]) and content.endswith(t[1]) for t in self._noisy_token)
 
-    def __get_context(self, all_items, index) -> str:
-        """智能上下文获取，包含前N条和后M条"""
-        start = max(0, index - self.context_window)
-        end = min(len(all_items), index + int(self.context_window / 2) + 1)
+    def __get_context(self, all_subs: list, target_indices: List[int]) -> str:
+        """通用上下文获取方法"""
+        min_idx = max(0, min(target_indices) - self.context_window)
+        max_idx = min(len(all_subs) - 1, max(target_indices) + self.context_window)
+
         context = []
-        for i in range(start, end):
-            if i == index:
-                prefix = "->当前行"
-            else:
-                prefix = f"上下文{i - index:+}"
-            context.append(f"{prefix}: {all_items[i].content}")
+        for idx in range(min_idx, max_idx + 1):
+            # prefix = ">" if idx in target_indices else f"{idx + 1:03d}"
+            prefix = ">" if idx in target_indices else ""
+            content = all_subs[idx].content.replace('\n', ' ').strip()
+            context.append(f"{prefix} {content}")
+
         return "\n".join(context)
 
-    def __process_batch(self, batch: list) -> list:
-        """处理批次翻译"""
-        openai = OpenAi(self._openai_key, self._openai_url, self._openai_proxy, self._openai_model)
-        batch_text = '\n'.join([item.content for item in batch])
-        context = "\n".join([self.__get_context(batch, i) for i in range(len(batch))])
+    def __process_items(self, all_subs: list, items: list) -> list:
+        """统一处理入口（支持批量和单条）"""
+        if self.enable_batch and len(items) > 1:
+            return self.__process_batch(all_subs, items)
+        return [self.__process_single(all_subs, item) for item in items]
 
+    def __process_batch(self, all_subs: list, batch: list) -> list:
+        """批量处理逻辑"""
+        indices = [all_subs.index(item) for item in batch]
+        context = self.__get_context(all_subs, indices)
+        batch_text = '\n'.join([item.content for item in batch])
+
+        openai = OpenAi(self._openai_key, self._openai_url, self._openai_proxy, self._openai_model)
         try:
             ret, result = openai.translate_to_zh(batch_text, context)
             if not ret:
@@ -692,116 +751,55 @@ class AutoSubv2(_PluginBase):
             self._stats['batch_success'] += len(batch)
             return batch
         except Exception as e:
-            logger.warning(f"批次翻译失败（{str(e)}），启动逐行补偿...")
-            return self.__process_fallback(batch)
+            logger.warning(f"批次翻译失败（{str(e)}），降级到单行匹配...")
+            self._stats['batch_fail'] += 1
+            return [self.__process_single(all_subs, item) for item in batch]
 
-    def __process_fallback(self, batch: list) -> list:
-        """补偿逐行翻译"""
+    def __process_single(self, all_subs: List[srt.Subtitle], item: srt.Subtitle) -> srt.Subtitle:
+        """单条处理逻辑"""
         openai = OpenAi(self._openai_key, self._openai_url, self._openai_proxy, self._openai_model)
-        results = []
-        for item in batch:
-            for _ in range(self.max_retries):
-                try:
-                    context = self.__get_context(batch, batch.index(item))
-                    ret, trans = openai.translate_to_zh(item.content, context)
-                    if ret:
-                        item.content = f"{trans}\n{item.content}"
-                        self._stats['line_fallback'] += 1
-                        break
-                except Exception as e:
-                    logger.debug(f"行补偿翻译失败: {str(e)}")
-                    time.sleep(1)
-            results.append(item)
-        self._stats['batch_fail'] += 1
-        return results
+        for _ in range(self.max_retries):
+            idx = all_subs.index(item)
+            context = self.__get_context(all_subs, [idx])
+            success, trans = openai.translate_to_zh(item.content, context)
 
-    def __merge_srt(self, subtitle_data):
-        """
-        合并整句字幕
-        :param subtitle_data:
-        :return:
-        """
-        subtitle_data = copy.deepcopy(subtitle_data)
-        # 合并字幕
-        merged_subtitle = []
-        sentence_end = True
+            if success:
+                item.content = f"{trans}\n{item.content}"
+                self._stats['line_fallback'] += 1
+                return item
 
-        for index, item in enumerate(subtitle_data):
-            # 当前字幕先将多行合并为一行，再去除首尾空格
-            content = item.content.replace('\n', ' ').strip()
-            # 去除html标签
-            parse = etree.HTML(content)
-            if parse is not None:
-                content = parse.xpath('string(.)')
-            if content == '':
-                continue
-            item.content = content
+            time.sleep(1)
 
-            # 背景音等字幕，跳过
-            if self.__is_noisy_subtitle(content):
-                merged_subtitle.append(item)
-                sentence_end = True
-                continue
-
-            if not merged_subtitle or sentence_end:
-                merged_subtitle.append(item)
-            elif not sentence_end:
-                merged_subtitle[-1].content = f"{merged_subtitle[-1].content} {content}"
-                merged_subtitle[-1].end = item.end
-
-            # 如果当前字幕内容以标志符结尾，则设置语句已经终结
-            if content.endswith(tuple(self._end_token)):
-                sentence_end = True
-            # 如果上句字幕超过一定长度，则设置语句已经终结
-            elif len(merged_subtitle[-1].content) > 350:
-                sentence_end = True
-            else:
-                sentence_end = False
-
-        return merged_subtitle
+        item.content = f"[翻译失败]\n{item.content}"
+        return item
 
     def __translate_zh_subtitle(self, source_lang: str, source_subtitle: str, dest_subtitle: str):
         self._stats = {'total': 0, 'batch_success': 0, 'batch_fail': 0, 'line_fallback': 0}
-        srt_data = self.__load_srt(source_subtitle)
-        translated_data = []
+        subs = self.__load_srt(source_subtitle)
+        valid_subs = [item for item in subs if not self.__is_noisy_subtitle(item.content.strip())]
+        self._stats['total'] = len(valid_subs)
+        processed = []
         current_batch = []
 
-        for idx, item in enumerate(srt_data):
-            # 预处理内容
-            content = item.content.replace('\n', ' ').strip()
-            if parse := etree.HTML(content):
-                content = parse.xpath('string(.)') or ''
-            if not content or self.__is_noisy_subtitle(content):
-                translated_data.append(item)
-                continue
+        for item in valid_subs:
+            current_batch.append(item)
 
-            new_item = copy.deepcopy(item)
-            new_item.content = content
-            current_batch.append(new_item)
-            self._stats['total'] += 1
-
-            # 批次处理逻辑
-            if self.enable_batch and (len(current_batch) >= self.batch_size or idx == len(srt_data) - 1):
-                processed = self.__process_batch(current_batch)
-                translated_data.extend(processed)
+            if len(current_batch) >= self.batch_size:
+                processed += self.__process_items(subs, current_batch)
                 current_batch = []
-                logger.info(f"已处理批次: {len(translated_data)}/{len(srt_data)}")
+                logger.info(f"进度: {len(processed)}/{len(valid_subs)}")
 
-        # 处理剩余条目
         if current_batch:
-            processed = self.__process_batch(current_batch) if self.enable_batch else self.__process_fallback(
-                current_batch)
-            translated_data.extend(processed)
+            processed += self.__process_items(subs, current_batch)
 
-        # 保存并打印统计
-        self.__save_srt(dest_subtitle, translated_data)
+        self.__save_srt(dest_subtitle, processed)
         logger.info(f"""
-翻译完成！
-总处理条目: {self._stats['total']}
-批次成功: {self._stats['batch_success']} ({(self._stats['batch_success'] / self._stats['total']) * 100:.1f}%)
-批次失败: {self._stats['batch_fail']}
-行补偿翻译: {self._stats['line_fallback']}
-        """)
+    翻译完成！
+    总处理条目: {self._stats['total']}
+    批次成功: {self._stats['batch_success']} ({(self._stats['batch_success'] / self._stats['total']) * 100:.1f}%)
+    批次失败: {self._stats['batch_fail']}
+    行补偿翻译: {self._stats['line_fallback']}
+            """)
 
     @staticmethod
     def __external_subtitle_exists(video_file, prefer_langs=None):
