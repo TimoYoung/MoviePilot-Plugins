@@ -25,7 +25,6 @@ from plugins.autosubv2.translate.openai import OpenAi
 
 
 # todo
-# 自动字幕生成 处理异常：'str' object cannot be interpreted as an integer
 # whisper asr失败问题解决
 # 翻译参数在启用翻译菜单下折叠
 # 监控目录自动翻译
@@ -40,7 +39,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.12"
+    plugin_version = "0.13"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -149,7 +148,6 @@ class AutoSubv2(_PluginBase):
         self.faster_whisper_model = config.get('faster_whisper_model', 'base')
         self.faster_whisper_model_path = config.get('faster_whisper_model_path',
                                                     self.get_data_path() / "faster-whisper-models")
-        self.stop_service()
         run_now = config.get('run_now')
         if not run_now:
             return
@@ -179,6 +177,8 @@ class AutoSubv2(_PluginBase):
             logger.warn(f"最大重试次数不是数字，不进行处理")
             return
         self.max_retries = int(self.max_retries)
+
+        self.stop_service()
         # asr 配置检查
         if not self.translate_only and not self.__check_asr():
             return
@@ -314,7 +314,7 @@ class AutoSubv2(_PluginBase):
                     self.post_message(title="自动字幕生成",
                                       text=f" 媒体: {file_name}\n 开始翻译字幕为中文 ... ")
                 self.__translate_zh_subtitle(lang, f"{file_path}.{lang}.srt", f"{file_path}.zh.机翻.srt")
-                logger.info(f"翻译字幕完成：{file_name}.zh.srt")
+                logger.info(f"翻译字幕完成：{file_name}.zh.机翻.srt")
 
             end_time = time.time()
             message = f" 媒体: {file_name}\n 处理完成\n 字幕原始语言: {lang}\n "
@@ -344,7 +344,7 @@ class AutoSubv2(_PluginBase):
         # 获取目录媒体文件列表
         for video_file in self.__get_library_files(path):
             if self._event.is_set():
-                logger.info(f"字幕生成服务停止")
+                logger.info(f"{video_file}处理中止")
                 return
             self.__process_file_subtitle(video_file)
 
@@ -791,8 +791,8 @@ class AutoSubv2(_PluginBase):
 
         for item in valid_subs:
             if self._event.is_set():
-                logger.info(f"字幕生成服务停止")
-                return
+                logger.info(f"字幕{source_subtitle}翻译停止")
+                raise Exception(f"用户中断当前任务")
             current_batch.append(item)
 
             if len(current_batch) >= self.batch_size:
