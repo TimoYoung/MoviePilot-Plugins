@@ -282,58 +282,58 @@ class AutoSubv2(_PluginBase):
         file_path, file_ext = os.path.splitext(video_file)
         file_name = os.path.basename(video_file)
 
-        try:
-            logger.info(f"开始处理文件：{video_file} ...")
-            # 判断目的字幕（和内嵌）是否已存在
-            if self.__target_subtitle_exists(video_file):
-                logger.warn(f"字幕文件已经存在，不进行处理")
+        # try:
+        logger.info(f"开始处理文件：{video_file} ...")
+        # 判断目的字幕（和内嵌）是否已存在
+        if self.__target_subtitle_exists(video_file):
+            logger.warn(f"字幕文件已经存在，不进行处理")
+            self.skip_count += 1
+            return
+        # 生成字幕
+        if self.send_notify:
+            self.post_message(title="自动字幕生成",
+                              text=f" 媒体: {file_name}\n 开始处理文件 ... ")
+        ret, lang = self.__generate_subtitle(video_file, file_path, self.translate_only)
+        if not ret:
+            message = f" 媒体: {file_name}\n "
+            if self.translate_only:
+                message += "内嵌&外挂字幕不存在，不进行翻译"
                 self.skip_count += 1
-                return
-            # 生成字幕
+            else:
+                message += "生成字幕失败，跳过后续处理"
+                self.fail_count += 1
+
+            if self.send_notify:
+                self.post_message(title="自动字幕生成", text=message)
+            return
+
+        if self.translate_zh:
+            # 翻译字幕
+            logger.info(f"开始翻译字幕为中文 ...")
             if self.send_notify:
                 self.post_message(title="自动字幕生成",
-                                  text=f" 媒体: {file_name}\n 开始处理文件 ... ")
-            ret, lang = self.__generate_subtitle(video_file, file_path, self.translate_only)
-            if not ret:
-                message = f" 媒体: {file_name}\n "
-                if self.translate_only:
-                    message += "内嵌&外挂字幕不存在，不进行翻译"
-                    self.skip_count += 1
-                else:
-                    message += "生成字幕失败，跳过后续处理"
-                    self.fail_count += 1
+                                  text=f" 媒体: {file_name}\n 开始翻译字幕为中文 ... ")
+            self.__translate_zh_subtitle(lang, f"{file_path}.{lang}.srt", f"{file_path}.zh.机翻.srt")
+            logger.info(f"翻译字幕完成：{file_name}.zh.srt")
 
-                if self.send_notify:
-                    self.post_message(title="自动字幕生成", text=message)
-                return
-
-            if self.translate_zh:
-                # 翻译字幕
-                logger.info(f"开始翻译字幕为中文 ...")
-                if self.send_notify:
-                    self.post_message(title="自动字幕生成",
-                                      text=f" 媒体: {file_name}\n 开始翻译字幕为中文 ... ")
-                self.__translate_zh_subtitle(lang, f"{file_path}.{lang}.srt", f"{file_path}.zh.机翻.srt")
-                logger.info(f"翻译字幕完成：{file_name}.zh.srt")
-
-            end_time = time.time()
-            message = f" 媒体: {file_name}\n 处理完成\n 字幕原始语言: {lang}\n "
-            if self.translate_zh:
-                message += f"字幕翻译语言: zh\n "
-            message += f"耗时：{round(end_time - start_time, 2)}秒"
-            logger.info(f"自动字幕生成 处理完成：{message}")
-            if self.send_notify:
-                self.post_message(title="自动字幕生成", text=message)
-            self.success_count += 1
-        except Exception as e:
-            logger.error(f"自动字幕生成 处理异常：{e}")
-            end_time = time.time()
-            message = f" 媒体: {file_name}\n 处理失败\n 耗时：{round(end_time - start_time, 2)}秒"
-            if self.send_notify:
-                self.post_message(title="自动字幕生成", text=message)
-            # 打印调用栈
-            traceback.print_exc()
-            self.fail_count += 1
+        end_time = time.time()
+        message = f" 媒体: {file_name}\n 处理完成\n 字幕原始语言: {lang}\n "
+        if self.translate_zh:
+            message += f"字幕翻译语言: zh\n "
+        message += f"耗时：{round(end_time - start_time, 2)}秒"
+        logger.info(f"自动字幕生成 处理完成：{message}")
+        if self.send_notify:
+            self.post_message(title="自动字幕生成", text=message)
+        self.success_count += 1
+        # except Exception as e:
+        #     logger.error(f"自动字幕生成 处理异常：{e}")
+        #     end_time = time.time()
+        #     message = f" 媒体: {file_name}\n 处理失败\n 耗时：{round(end_time - start_time, 2)}秒"
+        #     if self.send_notify:
+        #         self.post_message(title="自动字幕生成", text=message)
+        #     # 打印调用栈
+        #     traceback.print_exc()
+        #     self.fail_count += 1
 
     def __process_folder_subtitle(self, path):
         """
