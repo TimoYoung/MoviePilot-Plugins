@@ -39,7 +39,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.15"
+    plugin_version = "0.16"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -89,25 +89,11 @@ class AutoSubv2(_PluginBase):
         self.max_retries = None
 
     def init_plugin(self, config=None):
-        self.additional_args = '-t 4 -p 1'
-        self.translate_zh = False
-        self.translate_only = False
-        self.whisper_model = None
-        self.whisper_main = None
-        self.file_size = None
+
         self.process_count = 0
         self.skip_count = 0
         self.fail_count = 0
         self.success_count = 0
-        self.send_notify = False
-        self.asr_engine = 'whisper.cpp'
-        self.faster_whisper_model = 'base'
-        self.faster_whisper_model_path = None
-
-        self.enable_batch: bool = True
-        self.batch_size: int = 1
-        self.context_window: int = 5
-        self.max_retries: int = 3
 
         # 如果没有配置信息， 则不处理
         if not config:
@@ -131,17 +117,15 @@ class AutoSubv2(_PluginBase):
                                  proxy=settings.PROXY if self._openai_proxy else None,
                                  model=self._openai_model)
 
-        # config.get('path_list') 用 \n 分割为 list 并去除重复值和空值
         path_list = list(set(config.get('path_list').split('\n')))
-        # file_size 转成数字
-        self.file_size = config.get('file_size')
+        self.file_size = int(config.get('file_size')) if config.get('file_size') else 10
         self.whisper_main = config.get('whisper_main')
         self.whisper_model = config.get('whisper_model')
         self.translate_only = config.get('translate_only', False)
         self.enable_batch = config.get('enable_batch', True)
-        self.batch_size = config.get('batch_size', 20)
-        self.context_window = config.get('context_window', 5)
-        self.max_retries = config.get('max_retries', 3)
+        self.batch_size = int(config.get('batch_size')) if config.get('batch_size') else 20
+        self.context_window = int(config.get('context_window')) if config.get('context_window') else 5
+        self.max_retries = int(config.get('max_retries')) if config.get('max_retries') else 3
         self.additional_args = config.get('additional_args', '-t 4 -p 1')
         self.send_notify = config.get('send_notify', False)
         self.asr_engine = config.get('asr_engine', 'faster_whisper')
@@ -149,29 +133,17 @@ class AutoSubv2(_PluginBase):
         self.faster_whisper_model_path = config.get('faster_whisper_model_path',
                                                     self.get_data_path() / "faster-whisper-models")
         run_now = config.get('run_now')
+        self.stop_service()
 
+        if not run_now:
+            return
+
+        config['run_now'] = False
+        self.update_config(config)
         # 如果没有配置信息， 则不处理
         if not path_list or not self.file_size:
             logger.warn(f"配置信息不完整，不进行处理")
             return
-
-        # 校验文件大小是否为数字
-        if not self.file_size.isdigit():
-            logger.warn(f"文件大小不是数字，不进行处理")
-            return
-
-        if not self.batch_size.isdigit():
-            logger.warn(f"批大小不是数字，不进行处理")
-            return
-        self.batch_size = int(self.batch_size)
-        if not self.context_window.isdigit():
-            logger.warn(f"上下文窗口大小不是数字，不进行处理")
-            return
-        self.context_window = int(self.context_window)
-        if not self.max_retries.isdigit():
-            logger.warn(f"最大重试次数不是数字，不进行处理")
-            return
-        self.max_retries = int(self.max_retries)
 
         # asr 配置检查
         if not self.translate_only and not self.__check_asr():
@@ -180,14 +152,6 @@ class AutoSubv2(_PluginBase):
         if self._running:
             logger.warn(f"上一次任务还未完成，不进行处理")
             return
-
-        if not run_now:
-            return
-
-        config['run_now'] = False
-
-        self.stop_service()
-        self.update_config(config)
 
         if run_now:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
@@ -276,7 +240,7 @@ class AutoSubv2(_PluginBase):
         if not video_file:
             return
         # 如果文件大小小于指定大小， 则不处理
-        if os.path.getsize(video_file) < int(self.file_size):
+        if os.path.getsize(video_file) < self.file_size:
             return
 
         self.process_count += 1
@@ -767,7 +731,7 @@ class AutoSubv2(_PluginBase):
     def __process_single(self, all_subs: List[srt.Subtitle], item: srt.Subtitle) -> srt.Subtitle:
         """单条处理逻辑"""
         openai = OpenAi(self._openai_key, self._openai_url, self._openai_proxy, self._openai_model)
-        for _ in range(int(self.max_retries)):
+        for _ in range(self.max_retries):
             idx = all_subs.index(item)
             context = self.__get_context(all_subs, [idx], is_batch=False)
             success, trans = openai.translate_to_zh(item.content, context)
