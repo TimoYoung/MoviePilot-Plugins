@@ -39,7 +39,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.16"
+    plugin_version = "0.17"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -63,7 +63,6 @@ class AutoSubv2(_PluginBase):
         super().__init__()
         # ChatGPT
         self.openai = None
-        self._chatgpt = None
         self._openai_key = None
         self._openai_url = None
         self._openai_proxy = None
@@ -105,7 +104,6 @@ class AutoSubv2(_PluginBase):
             if not chatgpt:
                 logger.error(f"翻译依赖于ChatGPT，请先维护ChatGPT插件")
                 return
-            self._chatgpt = chatgpt and chatgpt.get("enable_gpt")
             self._openai_key = chatgpt and chatgpt.get("openai_key")
             self._openai_url = chatgpt and chatgpt.get("openai_url")
             self._openai_proxy = chatgpt and chatgpt.get("proxy")
@@ -298,7 +296,7 @@ class AutoSubv2(_PluginBase):
             if self.send_notify:
                 self.post_message(title="自动字幕生成", text=message)
             # 打印调用栈
-            logger.error(traceback.format_exc())
+            logger.debug(traceback.format_exc())
             self.fail_count += 1
 
     def __process_folder_subtitle(self, path):
@@ -885,39 +883,7 @@ class AutoSubv2(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'enable_gpt',
-                                            'label': '启用OpenAi翻译',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'send_notify',
-                                            'label': '发送通知',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 4
+                                    'md': 6
                                 },
                                 'content': [
                                     {
@@ -925,6 +891,22 @@ class AutoSubv2(_PluginBase):
                                         'props': {
                                             'model': 'run_now',
                                             'label': '立即运行一次',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 6
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'send_notify',
+                                            'label': '发送通知',
                                         }
                                     }
                                 ]
@@ -1158,9 +1140,8 @@ class AutoSubv2(_PluginBase):
                 ]
             }
         ], {
-            "enable_gpt": True,
-            "send_notify": False,
             "run_now": False,
+            "send_notify": False,
             "asr_engine": "faster-whisper",
             "faster_whisper_model": "base",
             "translate_zh": True,
