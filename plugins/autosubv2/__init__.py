@@ -40,7 +40,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.10"
+    plugin_version = "0.11"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -201,41 +201,41 @@ class AutoSubv2(_PluginBase):
 
     def _do_autosub(self, path_list: str):
         # 依次处理每个目录
-        try:
-            self._running = True
-            self.success_count = self.skip_count = self.fail_count = self.process_count = 0
-            for path in path_list:
-                if self._event.is_set():
-                    logger.info(f"字幕生成服务停止")
-                    return
-                logger.info(f"开始处理目录/文件：{path} ...")
-                # 如果目录不存在， 则不处理
-                if not os.path.exists(path):
-                    logger.warn(f"目录/文件不存在，不进行处理")
-                    continue
+        # try:
+        self._running = True
+        self.success_count = self.skip_count = self.fail_count = self.process_count = 0
+        for path in path_list:
+            if self._event.is_set():
+                logger.info(f"字幕生成服务停止")
+                return
+            logger.info(f"开始处理目录/文件：{path} ...")
+            # 如果目录不存在， 则不处理
+            if not os.path.exists(path):
+                logger.warn(f"目录/文件不存在，不进行处理")
+                continue
 
-                # 如果目录不是绝对路径， 则不处理
-                if not os.path.isabs(path):
-                    logger.warn(f"目录/文件不是绝对路径，不进行处理")
-                    continue
+            # 如果目录不是绝对路径， 则不处理
+            if not os.path.isabs(path):
+                logger.warn(f"目录/文件不是绝对路径，不进行处理")
+                continue
 
-                if os.path.isdir(path):
-                    # 处理目录
-                    self.__process_folder_subtitle(path)
-                elif os.path.splitext(path)[-1].lower() in settings.RMT_MEDIAEXT:
-                    # 处理单个视频文件
-                    self.__process_file_subtitle(path)
-                # 如果目录不是文件夹， 则不处理
-                else:
-                    logger.warn(f"目录不是文件夹或视频文件，不进行处理")
-                    continue
+            if os.path.isdir(path):
+                # 处理目录
+                self.__process_folder_subtitle(path)
+            elif os.path.splitext(path)[-1].lower() in settings.RMT_MEDIAEXT:
+                # 处理单个视频文件
+                self.__process_file_subtitle(path)
+            # 如果目录不是文件夹， 则不处理
+            else:
+                logger.warn(f"目录不是文件夹或视频文件，不进行处理")
+                continue
 
-        except Exception as e:
-            logger.error(f"处理异常: {e}")
-        finally:
-            logger.info(f"处理完成: "
-                        f"成功{self.success_count} / 跳过{self.skip_count} / 失败{self.fail_count} / 共{self.process_count}")
-            self._running = False
+        # except Exception as e:
+        #     logger.error(f"处理异常: {e}")
+        # finally:
+        #     logger.info(f"处理完成: "
+        #                 f"成功{self.success_count} / 跳过{self.skip_count} / 失败{self.fail_count} / 共{self.process_count}")
+        #     self._running = False
 
     def __check_asr(self):
         if self.asr_engine == 'whisper.cpp':
