@@ -39,7 +39,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.14"
+    plugin_version = "0.15"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -149,13 +149,6 @@ class AutoSubv2(_PluginBase):
         self.faster_whisper_model_path = config.get('faster_whisper_model_path',
                                                     self.get_data_path() / "faster-whisper-models")
         run_now = config.get('run_now')
-        if not run_now:
-            return
-
-        config['run_now'] = False
-
-        self.stop_service()
-        self.update_config(config)
 
         # 如果没有配置信息， 则不处理
         if not path_list or not self.file_size:
@@ -187,6 +180,14 @@ class AutoSubv2(_PluginBase):
         if self._running:
             logger.warn(f"上一次任务还未完成，不进行处理")
             return
+
+        if not run_now:
+            return
+
+        config['run_now'] = False
+
+        self.stop_service()
+        self.update_config(config)
 
         if run_now:
             self._scheduler = BackgroundScheduler(timezone=settings.TZ)
