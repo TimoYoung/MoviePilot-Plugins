@@ -25,7 +25,6 @@ from plugins.autosubv2.translate.openai import OpenAi
 
 
 # todo
-# debug 已存在字幕的判断问题
 # 自动字幕生成 处理异常：'str' object cannot be interpreted as an integer
 # whisper asr失败问题解决
 # 翻译参数在启用翻译菜单下折叠
@@ -824,7 +823,7 @@ class AutoSubv2(_PluginBase):
         video_dir, video_name = os.path.split(video_file)
         video_name, video_ext = os.path.splitext(video_name)
 
-        if type(prefer_langs) == str and prefer_langs:
+        if prefer_langs and type(prefer_langs) == str:
             prefer_langs = [prefer_langs]
 
         metadata_flags = ["default", "forced", "foreign", "sdh", "cc", "hi"]
@@ -864,7 +863,7 @@ class AutoSubv2(_PluginBase):
                 continue
 
             # 提取文件名中的语言和元数据信息
-            filename_without_ext = file[len(video_name) + 1: -len(ext)] if file.startswith(video_name + ".") else ""
+            filename_without_ext = file[: -len(ext)] if file.startswith(video_name + ".") else ""
             subtitle_lang, metadata = parse_filename(filename_without_ext)
 
             # 如果没有语言标记，跳过
