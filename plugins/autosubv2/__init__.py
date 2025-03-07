@@ -39,7 +39,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.13"
+    plugin_version = "0.14"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -153,6 +153,8 @@ class AutoSubv2(_PluginBase):
             return
 
         config['run_now'] = False
+
+        self.stop_service()
         self.update_config(config)
 
         # 如果没有配置信息， 则不处理
@@ -178,7 +180,6 @@ class AutoSubv2(_PluginBase):
             return
         self.max_retries = int(self.max_retries)
 
-        self.stop_service()
         # asr 配置检查
         if not self.translate_only and not self.__check_asr():
             return
@@ -765,7 +766,7 @@ class AutoSubv2(_PluginBase):
     def __process_single(self, all_subs: List[srt.Subtitle], item: srt.Subtitle) -> srt.Subtitle:
         """单条处理逻辑"""
         openai = OpenAi(self._openai_key, self._openai_url, self._openai_proxy, self._openai_model)
-        for _ in range(self.max_retries):
+        for _ in range(int(self.max_retries)):
             idx = all_subs.index(item)
             context = self.__get_context(all_subs, [idx], is_batch=False)
             success, trans = openai.translate_to_zh(item.content, context)
