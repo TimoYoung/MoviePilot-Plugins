@@ -40,7 +40,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.11"
+    plugin_version = "0.12"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -201,41 +201,41 @@ class AutoSubv2(_PluginBase):
 
     def _do_autosub(self, path_list: str):
         # 依次处理每个目录
-        # try:
-        self._running = True
-        self.success_count = self.skip_count = self.fail_count = self.process_count = 0
-        for path in path_list:
-            if self._event.is_set():
-                logger.info(f"字幕生成服务停止")
-                return
-            logger.info(f"开始处理目录/文件：{path} ...")
-            # 如果目录不存在， 则不处理
-            if not os.path.exists(path):
-                logger.warn(f"目录/文件不存在，不进行处理")
-                continue
+        try:
+            self._running = True
+            self.success_count = self.skip_count = self.fail_count = self.process_count = 0
+            for path in path_list:
+                if self._event.is_set():
+                    logger.info(f"字幕生成服务停止")
+                    return
+                logger.info(f"开始处理目录/文件：{path} ...")
+                # 如果目录不存在， 则不处理
+                if not os.path.exists(path):
+                    logger.warn(f"目录/文件不存在，不进行处理")
+                    continue
 
-            # 如果目录不是绝对路径， 则不处理
-            if not os.path.isabs(path):
-                logger.warn(f"目录/文件不是绝对路径，不进行处理")
-                continue
+                # 如果目录不是绝对路径， 则不处理
+                if not os.path.isabs(path):
+                    logger.warn(f"目录/文件不是绝对路径，不进行处理")
+                    continue
 
-            if os.path.isdir(path):
-                # 处理目录
-                self.__process_folder_subtitle(path)
-            elif os.path.splitext(path)[-1].lower() in settings.RMT_MEDIAEXT:
-                # 处理单个视频文件
-                self.__process_file_subtitle(path)
-            # 如果目录不是文件夹， 则不处理
-            else:
-                logger.warn(f"目录不是文件夹或视频文件，不进行处理")
-                continue
+                if os.path.isdir(path):
+                    # 处理目录
+                    self.__process_folder_subtitle(path)
+                elif os.path.splitext(path)[-1].lower() in settings.RMT_MEDIAEXT:
+                    # 处理单个视频文件
+                    self.__process_file_subtitle(path)
+                # 如果目录不是文件夹， 则不处理
+                else:
+                    logger.warn(f"目录不是文件夹或视频文件，不进行处理")
+                    continue
 
-        # except Exception as e:
-        #     logger.error(f"处理异常: {e}")
-        # finally:
-        #     logger.info(f"处理完成: "
-        #                 f"成功{self.success_count} / 跳过{self.skip_count} / 失败{self.fail_count} / 共{self.process_count}")
-        #     self._running = False
+        except Exception as e:
+            logger.error(f"处理异常: {e}")
+        finally:
+            logger.info(f"处理完成: "
+                        f"成功{self.success_count} / 跳过{self.skip_count} / 失败{self.fail_count} / 共{self.process_count}")
+            self._running = False
 
     def __check_asr(self):
         if self.asr_engine == 'whisper.cpp':
@@ -282,58 +282,58 @@ class AutoSubv2(_PluginBase):
         file_path, file_ext = os.path.splitext(video_file)
         file_name = os.path.basename(video_file)
 
-        # try:
-        logger.info(f"开始处理文件：{video_file} ...")
-        # 判断目的字幕（和内嵌）是否已存在
-        if self.__target_subtitle_exists(video_file):
-            logger.warn(f"字幕文件已经存在，不进行处理")
-            self.skip_count += 1
-            return
-        # 生成字幕
-        if self.send_notify:
-            self.post_message(title="自动字幕生成",
-                              text=f" 媒体: {file_name}\n 开始处理文件 ... ")
-        ret, lang = self.__generate_subtitle(video_file, file_path, self.translate_only)
-        if not ret:
-            message = f" 媒体: {file_name}\n "
-            if self.translate_only:
-                message += "内嵌&外挂字幕不存在，不进行翻译"
+        try:
+            logger.info(f"开始处理文件：{video_file} ...")
+            # 判断目的字幕（和内嵌）是否已存在
+            if self.__target_subtitle_exists(video_file):
+                logger.warn(f"字幕文件已经存在，不进行处理")
                 self.skip_count += 1
-            else:
-                message += "生成字幕失败，跳过后续处理"
-                self.fail_count += 1
-
-            if self.send_notify:
-                self.post_message(title="自动字幕生成", text=message)
-            return
-
-        if self.translate_zh:
-            # 翻译字幕
-            logger.info(f"开始翻译字幕为中文 ...")
+                return
+            # 生成字幕
             if self.send_notify:
                 self.post_message(title="自动字幕生成",
-                                  text=f" 媒体: {file_name}\n 开始翻译字幕为中文 ... ")
-            self.__translate_zh_subtitle(lang, f"{file_path}.{lang}.srt", f"{file_path}.zh.机翻.srt")
-            logger.info(f"翻译字幕完成：{file_name}.zh.srt")
+                                  text=f" 媒体: {file_name}\n 开始处理文件 ... ")
+            ret, lang = self.__generate_subtitle(video_file, file_path, self.translate_only)
+            if not ret:
+                message = f" 媒体: {file_name}\n "
+                if self.translate_only:
+                    message += "内嵌&外挂字幕不存在，不进行翻译"
+                    self.skip_count += 1
+                else:
+                    message += "生成字幕失败，跳过后续处理"
+                    self.fail_count += 1
 
-        end_time = time.time()
-        message = f" 媒体: {file_name}\n 处理完成\n 字幕原始语言: {lang}\n "
-        if self.translate_zh:
-            message += f"字幕翻译语言: zh\n "
-        message += f"耗时：{round(end_time - start_time, 2)}秒"
-        logger.info(f"自动字幕生成 处理完成：{message}")
-        if self.send_notify:
-            self.post_message(title="自动字幕生成", text=message)
-        self.success_count += 1
-        # except Exception as e:
-        #     logger.error(f"自动字幕生成 处理异常：{e}")
-        #     end_time = time.time()
-        #     message = f" 媒体: {file_name}\n 处理失败\n 耗时：{round(end_time - start_time, 2)}秒"
-        #     if self.send_notify:
-        #         self.post_message(title="自动字幕生成", text=message)
-        #     # 打印调用栈
-        #     traceback.print_exc()
-        #     self.fail_count += 1
+                if self.send_notify:
+                    self.post_message(title="自动字幕生成", text=message)
+                return
+
+            if self.translate_zh:
+                # 翻译字幕
+                logger.info(f"开始翻译字幕为中文 ...")
+                if self.send_notify:
+                    self.post_message(title="自动字幕生成",
+                                      text=f" 媒体: {file_name}\n 开始翻译字幕为中文 ... ")
+                self.__translate_zh_subtitle(lang, f"{file_path}.{lang}.srt", f"{file_path}.zh.机翻.srt")
+                logger.info(f"翻译字幕完成：{file_name}.zh.srt")
+
+            end_time = time.time()
+            message = f" 媒体: {file_name}\n 处理完成\n 字幕原始语言: {lang}\n "
+            if self.translate_zh:
+                message += f"字幕翻译语言: zh\n "
+            message += f"耗时：{round(end_time - start_time, 2)}秒"
+            logger.info(f"自动字幕生成 处理完成：{message}")
+            if self.send_notify:
+                self.post_message(title="自动字幕生成", text=message)
+            self.success_count += 1
+        except Exception as e:
+            logger.error(f"自动字幕生成 处理异常：{e}")
+            end_time = time.time()
+            message = f" 媒体: {file_name}\n 处理失败\n 耗时：{round(end_time - start_time, 2)}秒"
+            if self.send_notify:
+                self.post_message(title="自动字幕生成", text=message)
+            # 打印调用栈
+            logger.error(traceback.format_exc())
+            self.fail_count += 1
 
     def __process_folder_subtitle(self, path):
         """
