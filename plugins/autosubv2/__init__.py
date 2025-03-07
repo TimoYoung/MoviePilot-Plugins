@@ -25,6 +25,8 @@ from plugins.autosubv2.translate.openai import OpenAi
 
 
 # todo
+# debug 已存在字幕的判断问题
+# 自动字幕生成 处理异常：'str' object cannot be interpreted as an integer
 # whisper asr失败问题解决
 # 翻译参数在启用翻译菜单下折叠
 # 监控目录自动翻译
@@ -591,7 +593,7 @@ class AutoSubv2(_PluginBase):
             if content.endswith(tuple(self._end_token)):
                 sentence_end = True
             # 如果上句字幕超过一定长度，则设置语句已经终结
-            elif len(merged_subtitle[-1].content) > 350:
+            elif len(merged_subtitle[-1].content) > 80:
                 sentence_end = True
             else:
                 sentence_end = False
@@ -717,17 +719,16 @@ class AutoSubv2(_PluginBase):
         """
         return any(content.startswith(t[0]) and content.endswith(t[1]) for t in self._noisy_token)
 
-    def __get_context(self, all_subs: list, target_indices: List[int]) -> str:
+    def __get_context(self, all_subs: list, target_indices: List[int], is_batch: bool) -> str:
         """通用上下文获取方法"""
         min_idx = max(0, min(target_indices) - self.context_window)
-        max_idx = min(len(all_subs) - 1, max(target_indices) + self.context_window)
+        max_idx = min(len(all_subs) - 1, max(target_indices) + self.context_window) if is_batch else min(target_indices)
 
         context = []
         for idx in range(min_idx, max_idx + 1):
-            # prefix = ">" if idx in target_indices else f"{idx + 1:03d}"
-            prefix = ">" if idx in target_indices else ""
+            status = "[待译]" if idx in target_indices else ""
             content = all_subs[idx].content.replace('\n', ' ').strip()
-            context.append(f"{prefix} {content}")
+            context.append(f"{status}{content}")
 
         return "\n".join(context)
 
@@ -740,7 +741,7 @@ class AutoSubv2(_PluginBase):
     def __process_batch(self, all_subs: list, batch: list) -> list:
         """批量处理逻辑"""
         indices = [all_subs.index(item) for item in batch]
-        context = self.__get_context(all_subs, indices)
+        context = self.__get_context(all_subs, indices, is_batch=True)
         batch_text = '\n'.join([item.content for item in batch])
 
         openai = OpenAi(self._openai_key, self._openai_url, self._openai_proxy, self._openai_model)
@@ -767,7 +768,7 @@ class AutoSubv2(_PluginBase):
         openai = OpenAi(self._openai_key, self._openai_url, self._openai_proxy, self._openai_model)
         for _ in range(self.max_retries):
             idx = all_subs.index(item)
-            context = self.__get_context(all_subs, [idx])
+            context = self.__get_context(all_subs, [idx], is_batch=False)
             success, trans = openai.translate_to_zh(item.content, context)
 
             if success:
@@ -783,7 +784,8 @@ class AutoSubv2(_PluginBase):
     def __translate_zh_subtitle(self, source_lang: str, source_subtitle: str, dest_subtitle: str):
         self._stats = {'total': 0, 'batch_success': 0, 'batch_fail': 0, 'line_fallback': 0}
         subs = self.__load_srt(source_subtitle)
-        valid_subs = [item for item in subs if not self.__is_noisy_subtitle(item.content.strip())]
+        valid_subs = self.__merge_srt(subs)
+        logger.info(f"合并前字幕数: {len(subs)},合并后字幕数: {len(valid_subs)}")
         self._stats['total'] = len(valid_subs)
         processed = []
         current_batch = []
@@ -795,12 +797,12 @@ class AutoSubv2(_PluginBase):
             current_batch.append(item)
 
             if len(current_batch) >= self.batch_size:
-                processed += self.__process_items(subs, current_batch)
+                processed += self.__process_items(valid_subs, current_batch)
                 current_batch = []
                 logger.info(f"进度: {len(processed)}/{len(valid_subs)}")
 
         if current_batch:
-            processed += self.__process_items(subs, current_batch)
+            processed += self.__process_items(valid_subs, current_batch)
 
         self.__save_srt(dest_subtitle, processed)
         logger.info(f"""
