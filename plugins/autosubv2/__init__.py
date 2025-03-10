@@ -25,7 +25,10 @@ from plugins.autosubv2.translate.openai import OpenAi
 
 
 # todo
-# whisper asr失败问题解决
+# 强制生成字幕 强制从音轨生成字幕
+# llm多语言模型支持
+# whisper 打印详细日志
+# whisper 模型下载失败问题
 # 翻译参数在启用翻译菜单下折叠
 # 监控目录自动翻译
 
@@ -342,18 +345,17 @@ class AutoSubv2(_PluginBase):
                 if not os.path.exists(cache_dir):
                     os.mkdir(cache_dir)
                 os.environ["HF_HUB_CACHE"] = cache_dir
-                model_path = download_model(self.faster_whisper_model, local_files_only=False, cache_dir=cache_dir)
+                model_path = download_model(self.faster_whisper_model, local_files_only=True, cache_dir=cache_dir)
                 logger.info(f"whisper model downloaded: {model_path}")
                 model = WhisperModel(model_size_or_path=model_path,
                                      device="cpu", compute_type="int8", cpu_threads=psutil.cpu_count(logical=False))
-                logger.info("whisper model inited.")
                 segments, info = model.transcribe(audio_file,
                                                   language=lang if lang != 'auto' else None,
                                                   word_timestamps=True,
                                                   vad_filter=True,
                                                   temperature=0,
                                                   beam_size=5)
-                logger.info(f"sound wav transcribed.")
+                logger.info("whisper model inited.")
                 if lang == 'auto':
                     lang = info.language
 
@@ -362,6 +364,9 @@ class AutoSubv2(_PluginBase):
                     # 英文先生成单词级别字幕，再合并
                     idx = 0
                     for segment in segments:
+                        if self._event.is_set():
+                            logger.info(f"whisper音轨转录服务停止")
+                            raise Exception(f"用户中断当前任务")
                         for word in segment.words:
                             idx += 1
                             subs.append(srt.Subtitle(index=idx,
@@ -371,12 +376,15 @@ class AutoSubv2(_PluginBase):
                     subs = self.__merge_srt(subs)
                 else:
                     for i, segment in enumerate(segments):
+                        if self._event.is_set():
+                            logger.info(f"whisper音轨转录服务停止")
+                            raise Exception(f"用户中断当前任务")
                         subs.append(srt.Subtitle(index=i,
                                                  start=timedelta(seconds=segment.start),
                                                  end=timedelta(seconds=segment.end),
                                                  content=segment.text))
-
                 self.__save_srt(f"{audio_file}.srt", subs)
+                logger.info(f"sound wav transcribed.")
                 return True, lang
             except ImportError:
                 logger.warn(f"faster-whisper 未安装，不进行处理")
