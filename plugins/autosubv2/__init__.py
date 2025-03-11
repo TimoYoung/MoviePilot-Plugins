@@ -89,6 +89,7 @@ class AutoSubv2(_PluginBase):
         self.batch_size = None
         self.context_window = None
         self.max_retries = None
+        self._proxy = None
 
     def init_plugin(self, config=None):
 
@@ -133,6 +134,7 @@ class AutoSubv2(_PluginBase):
         self.faster_whisper_model = config.get('faster_whisper_model', 'base')
         self.faster_whisper_model_path = config.get('faster_whisper_model_path',
                                                     self.get_data_path() / "faster-whisper-models")
+        self._proxy = config.get('proxy', False)
         run_now = config.get('run_now')
         self.stop_service()
 
@@ -345,17 +347,20 @@ class AutoSubv2(_PluginBase):
                 if not os.path.exists(cache_dir):
                     os.mkdir(cache_dir)
                 os.environ["HF_HUB_CACHE"] = cache_dir
-                model_path = download_model(self.faster_whisper_model, local_files_only=True, cache_dir=cache_dir)
-                logger.info(f"whisper model downloaded: {model_path}")
-                model = WhisperModel(model_size_or_path=model_path,
-                                     device="cpu", compute_type="int8", cpu_threads=psutil.cpu_count(logical=False))
+                if self._proxy:
+                    os.environ["HTTP_PROXY"] = settings.PROXY
+                    os.environ["HTTPS_PROXY"] = settings.PROXY
+                model = WhisperModel(
+                    download_model(self.faster_whisper_model, local_files_only=False, cache_dir=cache_dir),
+                    device="cpu", compute_type="int8", cpu_threads=psutil.cpu_count(logical=False))
                 segments, info = model.transcribe(audio_file,
                                                   language=lang if lang != 'auto' else None,
                                                   word_timestamps=True,
                                                   vad_filter=True,
                                                   temperature=0,
                                                   beam_size=5)
-                logger.info("whisper model inited.")
+                logger.info("Detected language '%s' with probability %f" % (info.language, info.language_probability))
+
                 if lang == 'auto':
                     lang = info.language
 
@@ -384,7 +389,7 @@ class AutoSubv2(_PluginBase):
                                                  end=timedelta(seconds=segment.end),
                                                  content=segment.text))
                 self.__save_srt(f"{audio_file}.srt", subs)
-                logger.info(f"sound wav transcribed.")
+                logger.info(f"音轨转字幕完成")
                 return True, lang
             except ImportError:
                 logger.warn(f"faster-whisper 未安装，不进行处理")
@@ -891,7 +896,7 @@ class AutoSubv2(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -907,7 +912,39 @@ class AutoSubv2(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 6
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'translate_zh',
+                                            'label': '翻译为中文',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'translate_only',
+                                            'label': '仅已有字幕翻译',
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -985,24 +1022,8 @@ class AutoSubv2(_PluginBase):
                                     {
                                         'component': 'VSwitch',
                                         'props': {
-                                            'model': 'translate_zh',
-                                            'label': '翻译为中文',
-                                        }
-                                    }
-                                ]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {
-                                    'cols': 12,
-                                    'md': 3
-                                },
-                                'content': [
-                                    {
-                                        'component': 'VSwitch',
-                                        'props': {
-                                            'model': 'translate_only',
-                                            'label': '仅已有字幕翻译',
+                                            'model': 'proxy',
+                                            'label': '使用代理下载模型',
                                         }
                                     }
                                 ]
@@ -1150,10 +1171,11 @@ class AutoSubv2(_PluginBase):
         ], {
             "run_now": False,
             "send_notify": False,
-            "asr_engine": "faster-whisper",
-            "faster_whisper_model": "base",
             "translate_zh": True,
             "translate_only": False,
+            "asr_engine": "faster-whisper",
+            "faster_whisper_model": "base",
+            "proxy": True,
             "enable_batch": True,
             "batch_size": 20,
             "context_window": 5,
