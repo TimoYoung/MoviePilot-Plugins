@@ -42,7 +42,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.19"
+    plugin_version = "0.20"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -348,8 +348,8 @@ class AutoSubv2(_PluginBase):
                     os.mkdir(cache_dir)
                 os.environ["HF_HUB_CACHE"] = cache_dir
                 if self._proxy:
-                    os.environ["HTTP_PROXY"] = settings.PROXY
-                    os.environ["HTTPS_PROXY"] = settings.PROXY
+                    os.environ["HTTP_PROXY"] = settings.PROXY['http']
+                    os.environ["HTTPS_PROXY"] = settings.PROXY['https']
                 model = WhisperModel(
                     download_model(self.faster_whisper_model, local_files_only=False, cache_dir=cache_dir),
                     device="cpu", compute_type="int8", cpu_threads=psutil.cpu_count(logical=False))
