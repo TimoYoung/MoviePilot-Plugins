@@ -25,11 +25,9 @@ from plugins.autosubv2.translate.openai import OpenAi
 
 
 # todo
-# 强制生成字幕 强制从音轨生成字幕
+# 优化字幕语言判断
 # llm多语言模型支持
 # whisper 打印详细日志
-# whisper 模型下载失败问题
-# 翻译参数在启用翻译菜单下折叠
 # 监控目录自动翻译
 
 class AutoSubv2(_PluginBase):
@@ -80,7 +78,7 @@ class AutoSubv2(_PluginBase):
         self.asr_engine = None
         self.send_notify = None
         self.additional_args = None
-        self.translate_only = None
+        self.enable_asr = None
         self.translate_zh = None
         self.whisper_model = None
         self.whisper_main = None
@@ -123,7 +121,7 @@ class AutoSubv2(_PluginBase):
         self.file_size = int(config.get('file_size')) if config.get('file_size') else 10
         self.whisper_main = config.get('whisper_main')
         self.whisper_model = config.get('whisper_model')
-        self.translate_only = config.get('translate_only', False)
+        self.enable_asr = config.get('enable_asr', True)
         self.enable_batch = config.get('enable_batch', True)
         self.batch_size = int(config.get('batch_size')) if config.get('batch_size') else 20
         self.context_window = int(config.get('context_window')) if config.get('context_window') else 5
@@ -149,7 +147,7 @@ class AutoSubv2(_PluginBase):
             return
 
         # asr 配置检查
-        if not self.translate_only and not self.__check_asr():
+        if self.enable_asr and not self.__check_asr():
             return
 
         if self._running:
@@ -262,10 +260,10 @@ class AutoSubv2(_PluginBase):
             if self.send_notify:
                 self.post_message(title="自动字幕生成",
                                   text=f" 媒体: {file_name}\n 开始处理文件 ... ")
-            ret, lang = self.__generate_subtitle(video_file, file_path, self.translate_only)
+            ret, lang = self.__generate_subtitle(video_file, file_path, self.enable_asr)
             if not ret:
                 message = f" 媒体: {file_name}\n "
-                if self.translate_only:
+                if not self.enable_asr:
                     message += "内嵌&外挂字幕不存在，不进行翻译"
                     self.skip_count += 1
                 else:
@@ -400,7 +398,7 @@ class AutoSubv2(_PluginBase):
                 return False, None
         return False, None
 
-    def __generate_subtitle(self, video_file, subtitle_file, only_extract=False):
+    def __generate_subtitle(self, video_file, subtitle_file, enable_asr=True):
         """
         生成字幕
         :param video_file: 视频文件
@@ -458,7 +456,7 @@ class AutoSubv2(_PluginBase):
         if audio_lang != 'auto':
             audio_lang = iso639.to_iso639_1(audio_lang)
 
-        if only_extract:
+        if not enable_asr:
             logger.info(f"未开启语音识别，且无已有字幕文件，跳过后续处理")
             return False, None
 
@@ -918,8 +916,8 @@ class AutoSubv2(_PluginBase):
                                     {
                                         'component': 'VSwitch',
                                         'props': {
-                                            'model': 'translate_zh',
-                                            'label': '翻译为中文',
+                                            'model': 'enable_asr',
+                                            'label': '允许从音轨提取字幕',
                                         }
                                     }
                                 ]
@@ -934,8 +932,8 @@ class AutoSubv2(_PluginBase):
                                     {
                                         'component': 'VSwitch',
                                         'props': {
-                                            'model': 'translate_only',
-                                            'label': '仅已有字幕翻译',
+                                            'model': 'translate_zh',
+                                            'label': '翻译为中文',
                                         }
                                     }
                                 ]
@@ -1044,7 +1042,7 @@ class AutoSubv2(_PluginBase):
                                         'component': 'VSwitch',
                                         'props': {
                                             'model': 'enable_batch',
-                                            'label': '启用批次翻译',
+                                            'label': '启用批量翻译',
                                         }
                                     }
                                 ]
@@ -1060,7 +1058,7 @@ class AutoSubv2(_PluginBase):
                                         'component': 'VTextField',
                                         'props': {
                                             'model': 'batch_size',
-                                            'label': '每批处理的最大字幕数',
+                                            'label': '每批翻译行数',
                                             'placeholder': '20'
                                         }
                                     }
@@ -1117,7 +1115,7 @@ class AutoSubv2(_PluginBase):
                                             'model': 'path_list',
                                             'label': '媒体路径',
                                             'rows': 5,
-                                            'placeholder': '要进行字幕生成的路径，每行一个路径，请确保路径正确'
+                                            'placeholder': '媒体文件或文件夹绝对路径（如为文件夹会遍历其中所有媒体文件），每行一个路径，请确保路径正确'
                                         }
                                     }
                                 ]
@@ -1172,7 +1170,7 @@ class AutoSubv2(_PluginBase):
             "run_now": False,
             "send_notify": False,
             "translate_zh": True,
-            "translate_only": False,
+            "enable_asr": True,
             "asr_engine": "faster-whisper",
             "faster_whisper_model": "base",
             "proxy": True,
