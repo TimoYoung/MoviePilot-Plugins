@@ -417,19 +417,21 @@ class AutoSubv2(_PluginBase):
             return False, None
 
         if not iso639.find(audio_lang) or not iso639.to_iso639_1(audio_lang):
-            logger.info(f"未知语言音轨")
+            logger.info(f"未从音轨元数据中获取到语言信息")
             audio_lang = 'auto'
 
-        expert_subtitle_langs = ['en', 'eng'] if audio_lang == 'auto' else [audio_lang, iso639.to_iso639_1(audio_lang)]
-        logger.info(f"使用 {expert_subtitle_langs} 匹配已有外挂字幕文件 ...")
+        # expert_subtitle_langs = ['en', 'eng'] if audio_lang == 'auto' else [audio_lang, iso639.to_iso639_1(audio_lang)]
+        expert_subtitle_langs = None if audio_lang == 'auto' else [audio_lang, iso639.to_iso639_1(audio_lang)]
+        logger.info(f"使用 {expert_subtitle_langs if expert_subtitle_langs else 'auto'} 匹配已有外挂字幕文件 ...")
 
-        exist, lang = self.__external_subtitle_exists(video_file, expert_subtitle_langs)
+        exist, lang = self.__external_subtitle_exists(video_file, expert_subtitle_langs, only_srt=True)
         if exist:
             logger.info(f"外挂字幕文件已经存在，字幕语言 {lang}")
             return True, iso639.to_iso639_1(lang)
 
         logger.info(f"外挂字幕文件不存在，使用 {expert_subtitle_langs} 匹配内嵌字幕文件 ...")
-        # 获取视频文件字幕信息
+        # 获取内嵌字幕(没有音轨语言则默认英语)
+        expert_subtitle_langs = ['en', 'eng'] if audio_lang == 'auto' else [audio_lang, iso639.to_iso639_1(audio_lang)]
         ret, subtitle_index, \
             subtitle_lang, subtitle_count = self.__get_video_prefer_subtitle(video_meta, expert_subtitle_langs)
         extract_subtitle = False
@@ -666,10 +668,11 @@ class AutoSubv2(_PluginBase):
             if subtitle_index is None:
                 subtitle_index = index
                 subtitle_lang = stream.get('tags', {}).get('language')
-            # 获取默认字幕
+            # 优先获取默认字幕
             if stream.get('disposition', {}).get('default'):
                 subtitle_index = index
                 subtitle_lang = stream.get('tags', {}).get('language')
+                break
             # 获取指定语言字幕
             if prefer_lang and stream.get('tags', {}).get('language') in prefer_lang:
                 subtitle_index = index
@@ -788,11 +791,12 @@ class AutoSubv2(_PluginBase):
             """)
 
     @staticmethod
-    def __external_subtitle_exists(video_file, prefer_langs=None):
+    def __external_subtitle_exists(video_file, prefer_langs=None, only_srt=False):
         """
         外部字幕文件是否存在,支持多种格式及扩展需求。
         :param video_file: 视频文件路径
         :param prefer_langs: 偏好语言列表，支持单个语言字符串或列表
+        :param only_srt: 是否只匹配srt格式的字幕
         :return: 元组 (是否存在, 检测到的语言)
         """
         video_dir, video_name = os.path.split(video_file)
@@ -802,7 +806,10 @@ class AutoSubv2(_PluginBase):
             prefer_langs = [prefer_langs]
 
         metadata_flags = ["default", "forced", "foreign", "sdh", "cc", "hi"]
-        subtitle_extensions = [".srt", ".sub", ".ass", ".ssa", ".vtt"]
+        if only_srt:
+            subtitle_extensions = [".srt"]
+        else:
+            subtitle_extensions = [".srt", ".sub", ".ass", ".ssa", ".vtt"]
 
         def parse_filename(filename):
             """
