@@ -39,7 +39,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.23"
+    plugin_version = "0.24"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -721,7 +721,7 @@ class AutoSubv2(_PluginBase):
     def __process_batch(self, all_subs: list, batch: list) -> list:
         """批量处理逻辑"""
         indices = [all_subs.index(item) for item in batch]
-        context = self.__get_context(all_subs, indices, is_batch=True)
+        context = self.__get_context(all_subs, indices, is_batch=True) if self.context_window > 0 else None
         batch_text = '\n'.join([item.content for item in batch])
 
         openai = OpenAi(self._openai_key, self._openai_url, self._openai_proxy, self._openai_model)
@@ -748,7 +748,7 @@ class AutoSubv2(_PluginBase):
         openai = OpenAi(self._openai_key, self._openai_url, self._openai_proxy, self._openai_model)
         for _ in range(self.max_retries):
             idx = all_subs.index(item)
-            context = self.__get_context(all_subs, [idx], is_batch=False)
+            context = self.__get_context(all_subs, [idx], is_batch=False) if self.context_window > 0 else None
             success, trans = openai.translate_to_zh(item.content, context)
 
             if success:
