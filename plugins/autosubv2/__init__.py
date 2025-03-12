@@ -39,7 +39,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.24"
+    plugin_version = "0.25"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -869,7 +869,7 @@ class AutoSubv2(_PluginBase):
             else:
                 # 未指定偏好语言，找到的第一个字幕即返回
                 return True, subtitle_lang, file
-        if strict and second_lang:
+        if not strict and second_lang:
             return True, second_lang, second_file
         return False, None, None
 
