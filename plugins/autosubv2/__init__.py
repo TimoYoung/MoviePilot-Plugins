@@ -39,7 +39,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.27"
+    plugin_version = "0.28"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -838,7 +838,7 @@ class AutoSubv2(_PluginBase):
             :return: (语言, 元数据列表)
             """
             parts = props.split(".")
-            if len(parts) < 2:
+            if len(parts) < 1:
                 return None, []
 
             cur_subtitle_lang = None
