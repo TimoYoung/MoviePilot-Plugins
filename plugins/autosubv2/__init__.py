@@ -39,7 +39,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.25"
+    plugin_version = "0.26"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -87,6 +87,7 @@ class AutoSubv2(_PluginBase):
         self.context_window = None
         self.max_retries = None
         self._proxy = None
+        self._translate_preference = None
 
     def init_plugin(self, config=None):
 
@@ -132,6 +133,7 @@ class AutoSubv2(_PluginBase):
         self.faster_whisper_model_path = config.get('faster_whisper_model_path',
                                                     self.get_data_path() / "faster-whisper-models")
         self._proxy = config.get('proxy', False)
+        self._translate_preference = config.get('translate_preference', 'origin_first')
         run_now = config.get('run_now')
         self.stop_service()
 
@@ -420,8 +422,10 @@ class AutoSubv2(_PluginBase):
             logger.info(f"未从音轨元数据中获取到语言信息")
             audio_lang = 'auto'
 
-        # expert_subtitle_langs = ['en', 'eng'] if audio_lang == 'auto' else [audio_lang, iso639.to_iso639_1(audio_lang)]
-        expert_subtitle_langs = None if audio_lang == 'auto' else [audio_lang, iso639.to_iso639_1(audio_lang)]
+        if self._translate_preference == "english_first":
+            expert_subtitle_langs = ['en', 'eng']
+        else:
+            expert_subtitle_langs = ['en', 'eng'] if audio_lang == 'auto' else [audio_lang, iso639.to_iso639_1(audio_lang)]
         logger.info(f"使用 {expert_subtitle_langs if expert_subtitle_langs else 'auto'} 匹配已有外挂字幕文件 ...")
 
         exist, lang, exist_sub_name = self.__external_subtitle_exists(video_file, expert_subtitle_langs, only_srt=True,
@@ -432,23 +436,35 @@ class AutoSubv2(_PluginBase):
             return True, iso639.to_iso639_1(lang), os.path.join(video_dir, exist_sub_name)
 
         logger.info(f"外挂字幕文件不存在，使用 {expert_subtitle_langs} 匹配内嵌字幕文件 ...")
-        # 获取内嵌字幕(没有音轨语言则默认英语)
-        expert_subtitle_langs = ['en', 'eng'] if audio_lang == 'auto' else [audio_lang, iso639.to_iso639_1(audio_lang)]
+        # 获取内嵌字幕
         ret, subtitle_index, \
             subtitle_lang, subtitle_count = self.__get_video_prefer_subtitle(video_meta, expert_subtitle_langs)
         extract_subtitle = False
         if ret:
-            if audio_lang == subtitle_lang:
-                # 如果音轨和字幕语言一致， 则直接提取字幕
-                extract_subtitle = True
-                logger.info(f"内嵌音轨和字幕语言一致，直接提取字幕 ...")
-            elif subtitle_count == 1:
-                # 如果音轨和字幕语言不一致，但只有一个字幕， 则直接提取字幕
-                extract_subtitle = True
-                logger.info(f"内嵌音轨和字幕语言不一致，但只有一个字幕，直接提取字幕 ...")
-            elif audio_lang == 'auto' and subtitle_lang in expert_subtitle_langs:
-                extract_subtitle = True
-                logger.info(f"音轨语言未知，字幕语言为默认语言{subtitle_lang}，直接提取字幕 ...")
+            if self._translate_preference == "english_first":
+                if subtitle_lang in expert_subtitle_langs:
+                    extract_subtitle = True
+                    logger.info(f"英文优先，字幕语言为{subtitle_lang}，直接提取字幕 ...")
+                elif subtitle_count == 1:
+                    # 如果音轨和字幕语言不一致，但只有一个字幕， 则直接提取字幕
+                    extract_subtitle = True
+                    logger.info(f"内嵌字幕非英文，但只有一个字幕，直接提取字幕 ...")
+                elif audio_lang == subtitle_lang:
+                    # 如果音轨和字幕语言一致， 则直接提取字幕
+                    extract_subtitle = True
+                    logger.info(f"内嵌字幕非英文，但和内嵌音轨语言一致，直接提取字幕 ...")
+            elif self._translate_preference == "origin_first":
+                if audio_lang == subtitle_lang:
+                    # 如果音轨和字幕语言一致， 则直接提取字幕
+                    extract_subtitle = True
+                    logger.info(f"源语言优先，内嵌音轨和字幕语言一致，直接提取字幕 ...")
+                elif subtitle_count == 1:
+                    # 如果音轨和字幕语言不一致，但只有一个字幕， 则直接提取字幕
+                    extract_subtitle = True
+                    logger.info(f"内嵌音轨和字幕语言不一致，但只有一个字幕，直接提取字幕 ...")
+                elif audio_lang == 'auto' and subtitle_lang in expert_subtitle_langs:
+                    extract_subtitle = True
+                    logger.info(f"音轨语言未知，字幕语言为默认语言{subtitle_lang}，直接提取字幕 ...")
 
         if extract_subtitle:
             audio_lang = iso639.to_iso639_1(subtitle_lang) \
@@ -881,8 +897,10 @@ class AutoSubv2(_PluginBase):
         """
         if self.translate_zh:
             prefer_langs = ['zh', 'chi', 'zh-CN', 'chs', 'zhs', 'zh-Hans', 'zhong', 'simp', 'cn']
-        else:
+        elif self._translate_preference == "english_first":
             prefer_langs = ['en', 'eng']
+        else:
+            prefer_langs = None
 
         exist, lang, _ = self.__external_subtitle_exists(video_file, prefer_langs)
         if exist:
@@ -1043,7 +1061,27 @@ class AutoSubv2(_PluginBase):
                                         }
                                     }
                                 ]
-                            }
+                            },
+                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSelect',
+                                        'props': {
+                                            'model': 'translate_preference',
+                                            'label': '翻译源语言偏好',
+                                            'items': [
+                                                {'title': '优先英文', 'value': 'english_first'},
+                                                {'title': '优先原始语言', 'value': 'origin_first'}
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
                         ]
                     },
                     {
@@ -1192,6 +1230,7 @@ class AutoSubv2(_PluginBase):
             "asr_engine": "faster-whisper",
             "faster_whisper_model": "base",
             "proxy": True,
+            "translate_preference": "origin_first",
             "enable_batch": True,
             "batch_size": 20,
             "context_window": 5,
