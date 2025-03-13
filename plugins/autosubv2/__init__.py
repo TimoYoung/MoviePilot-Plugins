@@ -39,7 +39,7 @@ class AutoSubv2(_PluginBase):
     # 主题色
     plugin_color = "#2C4F7E"
     # 插件版本
-    plugin_version = "0.26"
+    plugin_version = "0.27"
     # 插件作者
     plugin_author = "TimoYoung"
     # 作者主页
@@ -825,32 +825,36 @@ class AutoSubv2(_PluginBase):
         if prefer_langs and type(prefer_langs) == str:
             prefer_langs = [prefer_langs]
 
-        metadata_flags = ["default", "forced", "foreign", "sdh", "cc", "hi"]
+        metadata_flags = ["default", "forced", "foreign", "sdh", "cc", "hi", "机翻"]
         if only_srt:
             subtitle_extensions = [".srt"]
         else:
             subtitle_extensions = [".srt", ".sub", ".ass", ".ssa", ".vtt"]
 
-        def parse_filename(filename):
+        def parse_props(props):
             """
-            解析字幕文件名，提取语言和元数据标记。
-            :param filename: 字幕文件名
+            解析字幕属性信息，提取语言和元数据标记。
+            :param props: 属性字符串
             :return: (语言, 元数据列表)
             """
-            parts = filename.split(".")
+            parts = props.split(".")
             if len(parts) < 2:
                 return None, []
 
             cur_subtitle_lang = None
             cur_metadata = []
-
             # 倒序遍历文件名中的标记
             for i in range(len(parts) - 1, -1, -1):
                 part = parts[i]
                 if part in metadata_flags:
                     cur_metadata.append(part)
                 elif cur_subtitle_lang is None:
-                    cur_subtitle_lang = part  # 记录最后一个语言标记
+                    try:
+                        iso639.to_iso639_1(part)
+                    except iso639.NonExistentLanguageError:
+                        continue
+                    else:
+                        cur_subtitle_lang = part  # 记录最后一个语言标记
 
             return cur_subtitle_lang, cur_metadata
 
@@ -868,8 +872,8 @@ class AutoSubv2(_PluginBase):
                 continue
 
             # 提取文件名中的语言和元数据信息
-            filename_without_ext = file[: -len(ext)] if file.startswith(video_name + ".") else ""
-            subtitle_lang, metadata = parse_filename(filename_without_ext)
+            props_str = file[len(video_name)+1: -len(ext)] if file.startswith(video_name + ".") else ""
+            subtitle_lang, metadata = parse_props(props_str)
 
             # 如果没有语言标记，跳过
             if not subtitle_lang:
