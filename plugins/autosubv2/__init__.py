@@ -27,7 +27,8 @@ from plugins.autosubv2.translate.openai import OpenAi
 # todo
 # 优化字幕语言判断
 # llm多语言模型支持
-# 监控目录自动翻译
+# UI重新设计
+# 监听入库事件，自动调用翻译
 
 class AutoSubv2(_PluginBase):
     # 插件名称
@@ -412,74 +413,86 @@ class AutoSubv2(_PluginBase):
         if not video_meta:
             logger.error(f"获取视频文件元数据失败，跳过后续处理")
             return False, None, None
+        # 获取字幕语言偏好
+        if self._translate_preference == "english_only":
+            prefer_subtitle_langs = ['en', 'eng']
+            strict = True
+        elif self._translate_preference == "english_first":
+            prefer_subtitle_langs = ['en', 'eng']
+            strict = False
+        else:  # self.translate_preference == "origin_first"
+            prefer_subtitle_langs = None
+            strict = False
 
-        # 获取视频文件音轨和语言信息
-        ret, audio_index, audio_lang = self.__get_video_prefer_audio(video_meta)
+        # 从视频文件音轨获取语言信息
+        ret, audio_index, audio_lang = self.__get_video_prefer_audio(video_meta, prefer_lang=prefer_subtitle_langs)
         if not ret:
+            logger.info(f"字幕源偏好：{self._translate_preference} 获取音轨元数据失败")
             return False, None, None
-
         if not iso639.find(audio_lang) or not iso639.to_iso639_1(audio_lang):
-            logger.info(f"未从音轨元数据中获取到语言信息")
+            logger.info(f"字幕源偏好：{self._translate_preference} 未从音轨元数据中获取到语言信息")
             audio_lang = 'auto'
-
-        if self._translate_preference == "english_first":
-            expert_subtitle_langs = ['en', 'eng']
-        else:
-            expert_subtitle_langs = ['en', 'eng'] if audio_lang == 'auto' else [audio_lang, iso639.to_iso639_1(audio_lang)]
-        logger.info(f"使用 {expert_subtitle_langs if expert_subtitle_langs else 'auto'} 匹配已有外挂字幕文件 ...")
-
-        exist, lang, exist_sub_name = self.__external_subtitle_exists(video_file, expert_subtitle_langs, only_srt=True,
-                                                                      strict=False)
-        if exist:
-            logger.info(f"外挂字幕文件已经存在，字幕语言 {lang}")
-            video_dir, _ = os.path.split(video_file)
-            return True, iso639.to_iso639_1(lang), os.path.join(video_dir, exist_sub_name)
-
-        logger.info(f"外挂字幕文件不存在，使用 {expert_subtitle_langs} 匹配内嵌字幕文件 ...")
+        # 当字幕源偏好为origin_first时，优先使用音轨语言
+        if self._translate_preference == "origin_first":
+            prefer_subtitle_langs = ['en', 'eng'] if audio_lang == 'auto' else [audio_lang,
+                                                                                iso639.to_iso639_1(audio_lang)]
+        # 获取外挂字幕
+        logger.info(f"使用 {prefer_subtitle_langs} 匹配已有外挂字幕文件 ...")
+        external_sub_exist, external_sub_lang, exist_sub_name = self.__external_subtitle_exists(video_file,
+                                                                                                prefer_subtitle_langs,
+                                                                                                only_srt=True,
+                                                                                                strict=strict)
         # 获取内嵌字幕
-        ret, subtitle_index, \
-            subtitle_lang, subtitle_count = self.__get_video_prefer_subtitle(video_meta, expert_subtitle_langs)
-        extract_subtitle = False
-        if ret:
-            if self._translate_preference == "english_first":
-                if subtitle_lang in expert_subtitle_langs:
-                    extract_subtitle = True
-                    logger.info(f"英文优先，字幕语言为{subtitle_lang}，直接提取字幕 ...")
-                elif subtitle_count == 1:
-                    # 如果音轨和字幕语言不一致，但只有一个字幕， 则直接提取字幕
-                    extract_subtitle = True
-                    logger.info(f"内嵌字幕非英文，但只有一个字幕，直接提取字幕 ...")
-                elif audio_lang == subtitle_lang:
-                    # 如果音轨和字幕语言一致， 则直接提取字幕
-                    extract_subtitle = True
-                    logger.info(f"内嵌字幕非英文，但和内嵌音轨语言一致，直接提取字幕 ...")
-            elif self._translate_preference == "origin_first":
-                if audio_lang == subtitle_lang:
-                    # 如果音轨和字幕语言一致， 则直接提取字幕
-                    extract_subtitle = True
-                    logger.info(f"源语言优先，内嵌音轨和字幕语言一致，直接提取字幕 ...")
-                elif subtitle_count == 1:
-                    # 如果音轨和字幕语言不一致，但只有一个字幕， 则直接提取字幕
-                    extract_subtitle = True
-                    logger.info(f"内嵌音轨和字幕语言不一致，但只有一个字幕，直接提取字幕 ...")
-                elif audio_lang == 'auto' and subtitle_lang in expert_subtitle_langs:
-                    extract_subtitle = True
-                    logger.info(f"音轨语言未知，字幕语言为默认语言{subtitle_lang}，直接提取字幕 ...")
+        logger.info(f"使用 {prefer_subtitle_langs} 匹配内嵌字幕文件 ...")
+        inner_sub_exist, subtitle_index, inner_sub_lang, = self.__get_video_prefer_subtitle(video_meta,
+                                                                                            prefer_subtitle_langs,
+                                                                                            strict=strict)
 
+        # 优先返回符合语言要求的外部字幕
+        def get_sub_path():
+            video_dir, _ = os.path.split(video_file)
+            return os.path.join(video_dir, exist_sub_name)
+
+        extract_subtitle = False
+        if self._translate_preference == "english_only":
+            if external_sub_exist:
+                logger.info(f"字幕源偏好：{self._translate_preference} 外挂字幕存在，字幕语言 {external_sub_lang}")
+                return True, iso639.to_iso639_1(external_sub_lang), get_sub_path()
+            elif inner_sub_exist:
+                logger.info(f"字幕源偏好：{self._translate_preference} 内嵌字幕存在，字幕语言 {inner_sub_lang}")
+                extract_subtitle = True
+            else:
+                logger.info(f"字幕源偏好：{self._translate_preference} 未匹配到外挂或内嵌字幕,需要使用asr提取")
+        else:  # english_first/origin_first
+            if external_sub_exist and external_sub_lang in prefer_subtitle_langs:
+                logger.info(f"字幕源偏好：{self._translate_preference} 外挂字幕存在，字幕语言 {external_sub_lang}")
+                return True, iso639.to_iso639_1(external_sub_lang), get_sub_path()
+            elif inner_sub_exist and inner_sub_lang in prefer_subtitle_langs:
+                logger.info(f"字幕源偏好：{self._translate_preference} 内嵌字幕存在，字幕语言 {inner_sub_lang}")
+                extract_subtitle = True
+            elif external_sub_exist:
+                logger.info(f"字幕源偏好：{self._translate_preference} 外挂字幕存在，字幕语言 {external_sub_lang}")
+                return True, iso639.to_iso639_1(external_sub_lang), get_sub_path()
+            elif inner_sub_exist:
+                logger.info(f"字幕源偏好：{self._translate_preference} 内嵌字幕存在，字幕语言 {inner_sub_lang}")
+                extract_subtitle = True
+            else:
+                logger.info(f"字幕源偏好：{self._translate_preference} 未匹配到外挂或内嵌字幕,需要使用asr提取")
+        # 提取内嵌字幕
         if extract_subtitle:
-            audio_lang = iso639.to_iso639_1(subtitle_lang) \
-                if (subtitle_lang and iso639.find(subtitle_lang) and iso639.to_iso639_1(subtitle_lang)) else 'und'
-            extracted_sub_path = f"{subtitle_file}.{audio_lang}.srt"
+            inner_sub_lang = iso639.to_iso639_1(inner_sub_lang) \
+                if (inner_sub_lang and iso639.find(inner_sub_lang) and iso639.to_iso639_1(inner_sub_lang)) else 'und'
+            extracted_sub_path = f"{subtitle_file}.{inner_sub_lang}.srt"
             Ffmpeg().extract_subtitle_from_video(video_file, extracted_sub_path, subtitle_index)
             logger.info(f"提取字幕完成：{extracted_sub_path}")
-            return True, audio_lang, extracted_sub_path
-
+            return True, inner_sub_lang, extracted_sub_path
+        # 使用asr音轨识别字幕
         if audio_lang != 'auto':
             audio_lang = iso639.to_iso639_1(audio_lang)
 
         if not enable_asr:
             logger.info(f"未开启语音识别，且无已有字幕文件，跳过后续处理")
-            return False, None
+            return False, None, None
 
         # 清理异常退出的临时文件
         tempdir = tempfile.gettempdir()
@@ -489,7 +502,7 @@ class AutoSubv2(_PluginBase):
 
         with tempfile.NamedTemporaryFile(prefix='autosub-', suffix='.wav', delete=True) as audio_file:
             # 提取音频
-            logger.info(f"提取音频：{audio_file.name} ...")
+            logger.info(f"正在提取音频：{audio_file.name} ...")
             Ffmpeg().extract_wav_from_video(video_file, audio_file.name, audio_index)
             logger.info(f"提取音频完成：{audio_file.name}")
 
@@ -503,10 +516,10 @@ class AutoSubv2(_PluginBase):
                 logger.info(f"复制字幕文件：{subtitle_file}.{lang}.srt")
                 # 删除临时文件
                 os.remove(f"{audio_file.name}.srt")
-                return ret, lang
+                return ret, lang, Path(f"{subtitle_file}.{lang}.srt")
             else:
                 logger.error(f"生成字幕失败")
-                return False, None
+                return False, None, None
 
     @staticmethod
     def __get_library_files(in_path, exclude_path=None):
@@ -630,11 +643,13 @@ class AutoSubv2(_PluginBase):
         logger.info(f"选中音轨信息：{audio_index}, {audio_lang}")
         return True, audio_index, audio_lang
 
-    def __get_video_prefer_subtitle(self, video_meta, prefer_lang=None):
+    def __get_video_prefer_subtitle(self, video_meta, prefer_lang=None, strict=False):
         """
-        获取视频的首选字幕，如果有多字幕， 优先指定语言字幕， 否则获取默认字幕
-        :param video_meta:
-        :return:
+        获取视频的首选字幕。优先级：1.字幕为偏好语言 2.默认字幕 3.第一个字幕
+        :param video_meta: 视频元数据
+        :param prefer_lang: 字幕偏好语言
+        :param strict: 是否严格模式。如果指定了偏好语言，严格模式下必须返回偏好语言的字幕。
+        :return: (是否命中字幕，字幕index，字幕语言)
         """
         # from https://wiki.videolan.org/Subtitles_codecs/
         """
@@ -672,7 +687,7 @@ class AutoSubv2(_PluginBase):
         # 获取首选字幕
         subtitle_lang = None
         subtitle_index = None
-        subtitle_count = 0
+        subtitle_score = 0
         subtitle_stream = filter(lambda x: x.get('codec_type') == 'subtitle', video_meta.get('streams', []))
         for index, stream in enumerate(subtitle_stream):
             # 如果是强制字幕，则跳过
@@ -684,28 +699,30 @@ class AutoSubv2(_PluginBase):
                     or stream.get('codec_name') in image_based_subtitle_codecs
             ):
                 continue
+            cur_is_default = stream.get('disposition', {}).get('default')
+            cur_lang = stream.get('tags', {}).get('language')
+            # 计算当前字幕得分：1.字幕为偏好语言*4 2.默认字幕*2 3.第一个字幕*1
+            cur_score = 0
+            if prefer_lang and cur_lang in prefer_lang:
+                cur_score += 4
+            if cur_is_default:
+                cur_score += 2
             if subtitle_index is None:
-                subtitle_index = index
-                subtitle_lang = stream.get('tags', {}).get('language')
-            # 优先获取默认字幕
-            if stream.get('disposition', {}).get('default'):
-                subtitle_index = index
-                subtitle_lang = stream.get('tags', {}).get('language')
-                break
-            # 获取指定语言字幕
-            if prefer_lang and stream.get('tags', {}).get('language') in prefer_lang:
-                subtitle_index = index
-                subtitle_lang = stream.get('tags', {}).get('language')
+                cur_score += 1
+                # 第一个字幕初始化为默认字幕
+                subtitle_lang, subtitle_index, subtitle_score = cur_lang, index, cur_score
+            if cur_score > subtitle_score:
+                subtitle_lang, subtitle_index, subtitle_score = cur_lang, index, cur_score
 
-            subtitle_count += 1
-
-        # 如果没有字幕， 则不处理
+        # 未找到字幕
         if subtitle_index is None:
             logger.debug(f"没有内嵌字幕")
-            return False, None, None, None
-
-        logger.debug(f"命中内嵌字幕信息：{subtitle_index}, {subtitle_lang}")
-        return True, subtitle_index, subtitle_lang, subtitle_count
+            return False, None, None
+        if strict and prefer_lang and subtitle_lang not in prefer_lang:
+            logger.warn(f"严格模式,没有偏好语言的字幕")
+            return False, None, None
+        logger.debug(f"命中内嵌字幕信息：{subtitle_index}, {subtitle_lang}, score:{subtitle_score}")
+        return True, subtitle_index, subtitle_lang
 
     def __is_noisy_subtitle(self, content):
         """
@@ -854,7 +871,7 @@ class AutoSubv2(_PluginBase):
                     except iso639.NonExistentLanguageError:
                         continue
                     else:
-                        cur_subtitle_lang = part  # 记录最后一个语言标记
+                        cur_subtitle_lang = iso639.to_iso639_1(part)  # 记录最后一个语言标记
 
             return cur_subtitle_lang, cur_metadata
 
@@ -872,7 +889,7 @@ class AutoSubv2(_PluginBase):
                 continue
 
             # 提取文件名中的语言和元数据信息
-            props_str = file[len(video_name)+1: -len(ext)] if file.startswith(video_name + ".") else ""
+            props_str = file[len(video_name) + 1: -len(ext)] if file.startswith(video_name + ".") else ""
             subtitle_lang, metadata = parse_props(props_str)
 
             # 如果没有语言标记，跳过
@@ -901,19 +918,26 @@ class AutoSubv2(_PluginBase):
         """
         if self.translate_zh:
             prefer_langs = ['zh', 'chi', 'zh-CN', 'chs', 'zhs', 'zh-Hans', 'zhong', 'simp', 'cn']
-        elif self._translate_preference == "english_first":
-            prefer_langs = ['en', 'eng']
+            strict = True
         else:
-            prefer_langs = None
+            if self._translate_preference == "english_first":
+                prefer_langs = ['en', 'eng']
+                strict = False
+            elif self._translate_preference == "english_only":
+                prefer_langs = ['en', 'eng']
+                strict = True
+            else:
+                prefer_langs = None
+                strict = False
 
-        exist, lang, _ = self.__external_subtitle_exists(video_file, prefer_langs)
+        exist, lang, _ = self.__external_subtitle_exists(video_file, prefer_langs, strict=strict)
         if exist:
             return True
 
         video_meta = Ffmpeg().get_video_metadata(video_file)
         if not video_meta:
             return False
-        ret, subtitle_index, subtitle_lang, _ = self.__get_video_prefer_subtitle(video_meta, prefer_lang=prefer_langs)
+        ret, subtitle_index, subtitle_lang = self.__get_video_prefer_subtitle(video_meta, prefer_lang=prefer_langs)
         if ret and subtitle_lang in prefer_langs:
             return True
 
@@ -1077,8 +1101,9 @@ class AutoSubv2(_PluginBase):
                                         'component': 'VSelect',
                                         'props': {
                                             'model': 'translate_preference',
-                                            'label': '翻译源语言偏好',
+                                            'label': '源语言偏好',
                                             'items': [
+                                                {'title': '仅英文', 'value': 'english_only'},
                                                 {'title': '优先英文', 'value': 'english_first'},
                                                 {'title': '优先原始语言', 'value': 'origin_first'}
                                             ]
