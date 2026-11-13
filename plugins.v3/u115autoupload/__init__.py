@@ -398,7 +398,7 @@ class U115AutoUpload(_PluginBase):
 
     plugin_name = "115 目录秒传上传"
     plugin_desc = "实时监控本地目录，新文件先探测 115 秒传，重试 x 次后回退普通上传。"
-    plugin_version = "1.3.0"
+    plugin_version = "1.3.1"
     plugin_label = "网盘"
     plugin_author = "local"
     plugin_config_prefix = "u115autoupload_"
@@ -878,6 +878,7 @@ class U115AutoUpload(_PluginBase):
                         "type": "warning",
                         "variant": "tonal",
                         "class": "mb-3 flex-shrink-0",
+                        "style": "flex: 0 0 auto;",
                         "text": "插件未启用，以下为历史记录。",
                     },
                 }
@@ -889,6 +890,7 @@ class U115AutoUpload(_PluginBase):
                     "type": "info",
                     "variant": "tonal",
                     "class": "mb-3 flex-shrink-0",
+                    "style": "flex: 0 0 auto;",
                     "text": (
                         f"共 {total} 条记录：成功 {success}，失败 {failed}，"
                         f"待处理 {pending}，队列中 {queue_count}。"
@@ -905,6 +907,7 @@ class U115AutoUpload(_PluginBase):
                     "type": "warning",
                     "variant": "tonal",
                     "class": "mb-3 flex-shrink-0",
+                    "style": "flex: 0 0 auto;",
                     "text": "删除记录不会删除网盘文件；如果本地文件仍在，下一轮扫描会重新上传。重试在后台执行，稍后刷新查看结果。",
                 },
             }
@@ -1162,41 +1165,41 @@ class U115AutoUpload(_PluginBase):
     def api_scan(self) -> Dict[str, Any]:
         """手动触发一次扫描，立即返回。"""
         if not self._enabled:
-            return {"success": False, "message": "插件未启用"}
+            return {"success": False, "message": "插件未启用", "data": None}
         logger.info("【115自动上传】手动触发扫描")
         threading.Thread(target=self.scan_once, daemon=True).start()
-        return {"success": True, "message": "扫描已触发"}
+        return {"success": True, "message": "扫描已触发", "data": None}
 
     def api_retry_record(self, payload: dict = Body(...)) -> Dict[str, Any]:
         """把一条失败记录重新加入上传队列。"""
         if not self._enabled:
-            return {"success": False, "message": "插件未启用"}
+            return {"success": False, "message": "插件未启用", "data": None}
         record_id = int(payload.get("id") or 0)
         ok, message, local_path = self.__mark_record_pending(record_id)
         if not ok:
             logger.warn(f"【115自动上传】重试记录 {record_id} 失败：{message}")
-            return {"success": False, "message": message}
+            return {"success": False, "message": message, "data": None}
         logger.info(f"【115自动上传】重试记录 {record_id}：{local_path}")
         self.__enqueue_event(Path(local_path), "retry")
-        return {"success": True, "message": message}
+        return {"success": True, "message": message, "data": None}
 
     def api_delete_record(self, payload: dict = Body(...)) -> Dict[str, Any]:
         """删除一条上传记录，不删除网盘文件。"""
         record_id = int(payload.get("id") or 0)
         if record_id <= 0:
-            return {"success": False, "message": "记录 ID 无效"}
+            return {"success": False, "message": "记录 ID 无效", "data": None}
         try:
             with self.get_database().session() as session:
                 record = session.get(U115UploadRecord, record_id)
                 if record is None:
-                    return {"success": False, "message": "记录不存在"}
+                    return {"success": False, "message": "记录不存在", "data": None}
                 session.delete(record)
                 session.commit()
             logger.info(f"【115自动上传】已删除上传记录：id={record_id}")
-            return {"success": True, "message": "记录已删除"}
+            return {"success": True, "message": "记录已删除", "data": None}
         except Exception:
             logger.exception(f"【115自动上传】删除记录 {record_id} 失败")
-            return {"success": False, "message": "数据库操作失败"}
+            return {"success": False, "message": "数据库操作失败", "data": None}
 
     def api_clear_success(self) -> Dict[str, Any]:
         """清理全部成功记录。"""
@@ -1210,10 +1213,14 @@ class U115AutoUpload(_PluginBase):
                 session.commit()
                 count = max(0, result.rowcount or 0)
             logger.info(f"【115自动上传】已清理 {count} 条成功记录")
-            return {"success": True, "message": f"已清理 {count} 条成功记录"}
+            return {
+                "success": True,
+                "message": f"已清理 {count} 条成功记录",
+                "data": {"count": count},
+            }
         except Exception:
             logger.exception("【115自动上传】清理成功记录失败")
-            return {"success": False, "message": "数据库操作失败"}
+            return {"success": False, "message": "数据库操作失败", "data": None}
 
     def api_records_page(self, payload: dict = Body(...)) -> Dict[str, Any]:
         """切换记录列表页码，页面重新加载后生效。"""
@@ -1223,7 +1230,11 @@ class U115AutoUpload(_PluginBase):
             page = 1
         self._page = max(1, page)
         logger.debug(f"【115自动上传】记录列表切换到第 {self._page} 页")
-        return {"success": True, "message": f"第 {self._page} 页"}
+        return {
+            "success": True,
+            "message": f"第 {self._page} 页",
+            "data": {"page": self._page},
+        }
 
     def scan_once(self) -> None:
         """执行一次目录扫描；上一轮未结束时直接跳过。"""
