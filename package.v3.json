@@ -1,4 +1,17 @@
 {
+  "GDriveStorage": {
+    "name": "Google Drive 存储",
+    "description": "把 Google Drive 接入 MoviePilot 存储体系，支持 OAuth2 授权、目录浏览、上传下载、移动复制、删除和容量查询；可在目录配置中作为媒体库存储使用。",
+    "labels": "网盘",
+    "version": "1.0.0",
+    "icon": "gdrive.png",
+    "author": "local",
+    "level": 1,
+    "system_version": ">=3.0.0",
+    "history": {
+      "v1.0.0": "初始版本：Google Drive OAuth2 授权、自定义存储注册、整理适配器、文件浏览/上传/下载/移动/复制/删除、容量查询和配置/详情界面。"
+    }
+  },
   "U115AutoUpload": {
     "name": "115 目录秒传上传",
     "description": "实时监控本地目录，新文件先多次探测 115 秒传，全部未命中后再普通上传；使用插件自有数据库记录已处理文件，支持列表、重试和删除记录。",
