@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/11-13-fix-u115-page-alert-pagination/research/host-page-render-contract.md", "reason": "宿主 PageRender 事件链路、API envelope 契约与 VAlert flex 裁切根因的源码证据与修复建议"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本次修复涉及插件后端返回值与宿主前端渲染契约的跨层数据格式，按该指南检查两端契约一致性"}

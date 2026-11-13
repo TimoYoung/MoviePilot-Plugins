@@ -1,0 +1,2 @@
+{"file": ".trellis/tasks/11-13-fix-u115-page-alert-pagination/research/host-page-render-contract.md", "reason": "按宿主契约逐条核对 5 个页面 API 的三键 envelope 与 VAlert flex 覆盖是否生效"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查插件返回值、前端 PageRender 解包逻辑和页面刷新行为之间是否存在契约不一致"}
