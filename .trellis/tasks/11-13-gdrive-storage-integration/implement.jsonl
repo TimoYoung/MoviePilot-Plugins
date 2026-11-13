@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/plugin-v3/index.md", "reason": "V3 插件规范入口"}
+{"file": ".trellis/spec/plugin-v3/page-api-envelope.md", "reason": "页面按钮 API 三键 envelope 与固定高度布局"}
+{"file": ".trellis/tasks/11-13-gdrive-storage/research/moviepilot-v3-storage-contract.md", "reason": "StorageOperSelection/get_module/StorageHelper 宿主契约"}
+{"file": ".trellis/tasks/11-13-gdrive-storage/research/plugin-ui-and-release.md", "reason": "配置页/详情页/生命周期/发布约定"}
+{"file": ".trellis/tasks/11-13-gdrive-storage/research/google-drive-api-v3.md", "reason": "客户端接口与限制"}

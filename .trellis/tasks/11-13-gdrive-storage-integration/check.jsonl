@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/plugin-v3/page-api-envelope.md", "reason": "验证页面 API 三键与 VAlert 布局"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "验证插件层与宿主层边界"}
+{"file": ".trellis/spec/plugin-v3/storage-extension.md", "reason": "检查 get_module/StorageOperSelection/严格查询返回类型"}

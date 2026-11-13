@@ -1,0 +1,30 @@
+{
+  "id": "gdrive-storage",
+  "name": "gdrive-storage",
+  "title": "Google Drive 存储扩展插件",
+  "description": "为 MoviePilot V3 增加 Google Drive 存储后端，提供 OAuth2 授权、目录浏览、上传下载、移动复制、容量查询和配置/详情界面。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "fruits",
+  "assignee": "fruits",
+  "createdAt": "2026-11-13",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "11-13-gdrive-api-client",
+    "11-13-gdrive-storage-integration",
+    "11-13-gdrive-docs-release"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
