@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 from pathlib import Path
 from typing import Callable, Optional
@@ -13,13 +14,42 @@ from .titles import matching_subjects, norm_imdb
 _LOCK = threading.Lock()
 _MEMORY: dict[str, str] = {}
 _LOADED = False
+_DATA_DIR: Optional[Path] = None
+_CACHE_NAME = "imdb_douban.json"
+_LEGACY_DIR_NAME = "smartclean"
+
+
+def configure(data_dir: Path) -> None:
+    """由插件 init_plugin 注入 get_data_path()。"""
+    global _DATA_DIR, _LOADED
+    path = Path(data_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    _migrate_legacy_cache(path)
+    _DATA_DIR = path
+    _LOADED = False
 
 
 def _cache_path() -> Path:
-    from app.runtime.config import settings
+    if _DATA_DIR is not None:
+        return _DATA_DIR / _CACHE_NAME
+    from app.sdk.config import settings
 
-    root = Path(str(getattr(settings, "CONFIG_DIR", "") or ".")).expanduser()
-    return root / "plugins" / "smartclean" / "imdb_douban.json"
+    path = Path(settings.PLUGIN_DATA_PATH) / "SmartClean"
+    path.mkdir(parents=True, exist_ok=True)
+    return path / _CACHE_NAME
+
+
+def _migrate_legacy_cache(target: Path) -> None:
+    from app.sdk.config import settings
+
+    legacy = Path(settings.PLUGIN_DATA_PATH) / _LEGACY_DIR_NAME / _CACHE_NAME
+    dest = target / _CACHE_NAME
+    if dest.exists() or not legacy.is_file():
+        return
+    try:
+        shutil.copy2(legacy, dest)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _load_disk() -> None:

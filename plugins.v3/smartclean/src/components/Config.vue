@@ -53,7 +53,7 @@ const notice = ref('')
 const syncBusy = ref(false)
 const watched = ref<WatchedStatus | null>(null)
 
-const url = (path: string) => `plugin/${props.pluginId || 'SmartClean'}${path}`
+const url = (path: string) => `plugin/${props.pluginId}${path}`
 const userItems = computed(() => users.value.map(name => ({ title: name, value: name })))
 
 watch(() => props.initialConfig, config => {

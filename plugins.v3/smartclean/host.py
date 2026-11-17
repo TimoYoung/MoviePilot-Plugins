@@ -482,7 +482,7 @@ def list_usernames() -> list[str]:
 
 def resolve_main_user(configured: str = "") -> str:
     """插件里选中的主用户；未选时回退到系统超级用户。"""
-    from app.runtime.config import settings
+    from app.sdk.config import settings
 
     username = str(configured or "").strip()
     if username:

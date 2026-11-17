@@ -148,7 +148,7 @@ def test_transfer_users_and_days_scope():
     )
     old = TransferFact("甲", NOW - timedelta(days=50), "tmdb", "1399", seasons={1})
     recent = TransferFact("甲", NOW - timedelta(days=2), "tmdb", "1399", seasons={1})
-    assert deletion_reason(season(), r, subjects=[], facts=[old], now=NOW) == "入库用户、最近入库天数"
+    assert deletion_reason(season(), r, subjects=[], facts=[old], now=NOW) == "MP入库用户、最近MP入库天数"
     assert deletion_reason(season(), r, subjects=[], facts=[old, recent], now=NOW) is None
     other = TransferFact("乙", NOW - timedelta(days=50), "tmdb", "1399", seasons={1})
     assert deletion_reason(season(), r, subjects=[], facts=[other], now=NOW) is None
@@ -634,3 +634,56 @@ def test_enrich_uses_subject_imdb_and_resolve_only_on_miss():
     assert n == 1
     assert calls == ["tt8800002"]
     clear_imdb_bridge_cache(disk=True)
+
+
+def test_watchedstore_configure_uses_injected_data_path(tmp_path):
+    from app.plugins.smartclean import watchedstore
+
+    data = tmp_path / "SmartClean"
+    watchedstore.configure(data)
+    watchedstore.save_snapshot(
+        "u1",
+        [Subject(douban_id="1", title="迁移后", year="2020", watched_on=NOW)],
+        mode="full",
+    )
+    assert (data / "watched_u1.json").is_file()
+    assert watchedstore.load_subjects("u1")[0].douban_id == "1"
+
+
+def test_watchedstore_migrates_legacy_lowercase_dir(tmp_path, monkeypatch):
+    from app.plugins.smartclean import watchedstore
+
+    plugin_root = tmp_path / "plugins"
+    legacy = plugin_root / "smartclean"
+    legacy.mkdir(parents=True)
+    (legacy / "watched_old.json").write_text(
+        '{"user":"old","subjects":[{"douban_id":"42","title":"旧","year":"2019"}],'
+        '"updated_at":"2026-01-01T00:00:00","total":1,"watermark":{},'
+        '"last_error":"","last_sync_mode":"full","pages_fetched":1}',
+        encoding="utf-8",
+    )
+
+    class FakeSettings:
+        PLUGIN_DATA_PATH = plugin_root
+
+    monkeypatch.setattr("app.sdk.config.settings", FakeSettings(), raising=False)
+    # watchedstore imports settings inside helpers; patch module attribute used after import
+    import app.sdk.config as sdk_config
+
+    monkeypatch.setattr(sdk_config, "settings", FakeSettings())
+
+    target = plugin_root / "SmartClean"
+    watchedstore.configure(target)
+    assert (target / "watched_old.json").is_file()
+
+
+def test_bridge_configure_uses_injected_data_path(tmp_path):
+    from app.plugins.smartclean import bridge
+
+    data = tmp_path / "SmartClean"
+    bridge.configure(data)
+    bridge.clear_imdb_bridge_cache(disk=True)
+    bridge.remember_douban_id("tt1234567", "999")
+    assert (data / "imdb_douban.json").is_file()
+    assert bridge.cached_douban_id("tt1234567") == "999"
+    bridge.clear_imdb_bridge_cache(disk=True)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -14,13 +15,53 @@ from .scan import parse_time
 
 _LOCK = threading.Lock()
 _SAFE_USER = re.compile(r"[^A-Za-z0-9_.-]+")
+_DATA_DIR: Optional[Path] = None
+# 旧版误用手写 CONFIG_DIR/plugins/smartclean，迁移到 get_data_path() 目录
+_LEGACY_DIR_NAME = "smartclean"
+
+
+def configure(data_dir: Path) -> None:
+    """由插件 init_plugin 注入 get_data_path()，避免手写 CONFIG_DIR。"""
+    global _DATA_DIR
+    path = Path(data_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    _migrate_legacy_dir(path)
+    _DATA_DIR = path
 
 
 def _cache_dir() -> Path:
-    from app.runtime.config import settings
+    if _DATA_DIR is not None:
+        return _DATA_DIR
+    from app.sdk.config import settings
 
-    root = Path(str(getattr(settings, "CONFIG_DIR", "") or ".")).expanduser()
-    return root / "plugins" / "smartclean"
+    # 未 configure 时的兜底（测试可 monkeypatch）；目录名与 get_data_path 一致
+    path = Path(settings.PLUGIN_DATA_PATH) / "SmartClean"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _legacy_dir() -> Path:
+    from app.sdk.config import settings
+
+    return Path(settings.PLUGIN_DATA_PATH) / _LEGACY_DIR_NAME
+
+
+def _migrate_legacy_dir(target: Path) -> None:
+    """把旧小写目录中的快照迁到官方 get_data_path() 目录。"""
+    legacy = _legacy_dir()
+    if legacy.resolve() == target.resolve() or not legacy.is_dir():
+        return
+    try:
+        for item in legacy.iterdir():
+            dest = target / item.name
+            if dest.exists():
+                continue
+            if item.is_file():
+                shutil.copy2(item, dest)
+            elif item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _user_key(user: str) -> str:

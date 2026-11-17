@@ -35,7 +35,7 @@ from .host import (
     resolve_main_user,
     sync_watched,
 )
-from . import watchedstore
+from . import bridge, watchedstore
 from .libraries import find_library, library_owner, normalize_library
 from .rules import libraries_using_rule, normalize_rule, rule_by_id
 from .scancache import ScanCache
@@ -54,7 +54,7 @@ class SmartClean(_PluginBase):
     plugin_name = "智能清理"
     plugin_desc = "按电影或剧集季清理 Emby / Jellyfin 媒体库，支持手动清理、规则与自动化。"
     plugin_icon = "Moviepilot_A.png"
-    plugin_version = "1.3.8"
+    plugin_version = "1.3.9"
     plugin_author = "TimoYoung"
     author_url = "https://github.com/TimoYoung"
     plugin_config_prefix = "smartclean_"
@@ -74,6 +74,10 @@ class SmartClean(_PluginBase):
 
     def init_plugin(self, config: Optional[dict[str, Any]] = None) -> None:
         config = config or {}
+        # 文件缓存必须走 get_data_path()，符合 V3 持久化合同
+        data_path = self.get_data_path()
+        watchedstore.configure(data_path)
+        bridge.configure(data_path)
         prev_user = self._main_user
         prev_cookie = self._douban_cookie
         self._enabled = config.get("enabled") is True
@@ -154,7 +158,9 @@ class SmartClean(_PluginBase):
         return services
 
     def stop_service(self) -> None:
-        return None
+        # 热重载 / 停用时释放模块级内存缓存，避免虚拟分身互相串状态
+        clear_watched_cache()
+        bridge.clear_imdb_bridge_cache(disk=False)
 
     def _scheduled(self, library_id: str) -> None:
         self._execute(library_id, mode="cron")
